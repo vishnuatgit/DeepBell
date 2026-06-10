@@ -4,11 +4,13 @@ import pandas as pd
 from dotenv import load_dotenv
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
+from datetime import datetime
 
 # Load environment variables (API Key)
 load_dotenv()
 
 DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "metrics.db"))
+REPORTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "reports"))
 
 # Prompt Template for the RCA Report
 RCA_PROMPT_TEMPLATE = """
@@ -28,7 +30,7 @@ Include:
 
 def setup_llm():
     if not os.getenv("GOOGLE_API_KEY"):
-        raise ValueError("GOOGLE_API_KEY environment variable is missing!")
+        raise ValueError("GOOGLE_API_KEY environment variable is missing! Please set it in a .env file.")
     
     return ChatGoogleGenerativeAI(
         model="gemini-pro",
@@ -44,5 +46,35 @@ def get_recent_metrics(limit=10):
     conn.close()
     return df.to_markdown()
 
+def generate_rca_report():
+    print("Initiating LLM Analyst...")
+    os.makedirs(REPORTS_DIR, exist_ok=True)
+    
+    try:
+        llm = setup_llm()
+    except ValueError as e:
+        print(f"Error: {e}")
+        return
+
+    telemetry = get_recent_metrics()
+    
+    prompt = PromptTemplate(
+        input_variables=["telemetry_data"],
+        template=RCA_PROMPT_TEMPLATE
+    )
+    
+    chain = prompt | llm
+    
+    print("Generating RCA Report using Gemini...")
+    response = chain.invoke({"telemetry_data": telemetry})
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    report_path = os.path.join(REPORTS_DIR, f"RCA_Report_{timestamp}.md")
+    
+    with open(report_path, "w") as f:
+        f.write(response.content)
+        
+    print(f"RCA Report successfully written to {report_path}")
+
 if __name__ == "__main__":
-    print("LLM Analyst module configured successfully.")
+    generate_rca_report()
