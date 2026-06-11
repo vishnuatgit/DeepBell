@@ -4,7 +4,11 @@ import sqlite3
 import logging
 import uuid
 import sys
-from fastapi import FastAPI, HTTPException
+import glob
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import HTMLResponse
 from typing import List, Dict
 
 # Set up logging to stdout so it can be captured by the Watchdog process
@@ -16,7 +20,14 @@ logging.basicConfig(
 logger = logging.getLogger("TargetApp")
 
 app = FastAPI(title="DeepBell Target App")
+
+# Dashboard UI Setup
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+app.mount("/static", StaticFiles(directory=os.path.join(BASE_DIR, "static")), name="static")
+templates = Jinja2Templates(directory=os.path.join(BASE_DIR, "templates"))
+
 DB_FILE = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "data", "app.db"))
+REPORTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "reports"))
 
 # A global list to simulate a memory leak
 _memory_leak_array = []
@@ -44,9 +55,7 @@ def startup_event():
     init_db()
     logger.info("Application started. Database initialized.")
 
-@app.get("/")
-def read_root():
-    return {"status": "healthy", "service": "DeepBell Target App"}
+
 
 @app.post("/transaction")
 def create_transaction(amount: float):
@@ -103,6 +112,23 @@ def inject_fatal_crash():
     """Simulates a fatal application crash by exiting the process."""
     logger.fatal("FAULT INJECTED: Fatal crash triggered. Shutting down process immediately.")
     sys.exit(1)
+
+@app.get("/", response_class=HTMLResponse)
+async def read_dashboard(request: Request):
+    """Serve the clean dark mode UI Dashboard."""
+    # Read the latest RCA report if it exists
+    latest_report = "No RCA reports generated yet. System is healthy!"
+    if os.path.exists(REPORTS_DIR):
+        reports = glob.glob(os.path.join(REPORTS_DIR, "*.md"))
+        if reports:
+            latest_file = max(reports, key=os.path.getmtime)
+            with open(latest_file, "r") as f:
+                latest_report = f.read()
+
+    return templates.TemplateResponse("index.html", {
+        "request": request, 
+        "report_content": latest_report
+    })
 
 @app.get("/fault/corrupt_db")
 def inject_db_corruption():
