@@ -2,9 +2,51 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DeepBell Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>
 <body>
-    <h1>DeepBell</h1>
+    <div class="dashboard-container">
+        <aside class="sidebar">
+            <div class="brand">DeepBell SRE</div>
+            <ul class="nav-links">
+                <li class="active">Overview</li>
+                <li>Live Metrics</li>
+                <li>RCA History</li>
+                <li>Settings</li>
+            </ul>
+        </aside>
+        
+        <main class="main-content">
+            <div class="header">
+                <h1>AI Root Cause Analysis</h1>
+                <div class="status-badge">System Healthy</div>
+            </div>
+            
+            <div class="report-card" id="report-container">
+                <!-- The markdown content will be injected here via JS -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Hidden div to hold the raw markdown from Jinja -->
+    <div id="raw-markdown" style="display: none;">{{ report_content }}</div>
+
+    <script>
+        // Parse the markdown passed from FastAPI into HTML
+        document.addEventListener('DOMContentLoaded', () => {
+            const rawMarkdown = document.getElementById('raw-markdown').innerText;
+            const reportContainer = document.getElementById('report-container');
+            
+            if (rawMarkdown.includes('No RCA reports generated yet')) {
+                reportContainer.innerHTML = `<p style="color: var(--text-secondary); text-align: center;">${rawMarkdown}</p>`;
+            } else {
+                reportContainer.innerHTML = marked.parse(rawMarkdown);
+            }
+        });
+    </script>
 </body>
 </html>
