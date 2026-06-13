@@ -120,13 +120,6 @@ Simulate real-world catastrophic failures against the live app to trigger the fu
 
 ---
 
-## Project Timeline
-
-| Week | Dates | What Was Built |
-|---|---|---|
-| Week 1 | June 4 - June 6 | `target_app` FastAPI service, SQLite schema, `snapshot_manager` PITR daemon |
-| Week 2 | June 7 - June 10 | `responder` module: process recovery (`rollback.py`), LangChain + Gemini RCA pipeline (`llm_analyst.py`) |
-| Week 2 | June 11 - June 13 | `watchdog` ML engine (IsolationForest), HTML/CSS dashboard served via Jinja2, final integration |
 
 ---
 
