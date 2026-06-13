@@ -1,52 +1,43 @@
-import subprocess, os, sys, signal, time
-
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-
-def start_process(command, cwd):
-    """Launch a subprocess in its own process group (Windows compatible)."""
-    return subprocess.Popen(
-        command,
-        cwd=cwd,
-        creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
-    )
+import subprocess
+import sys
+import time
+import os
 
 def main():
-    processes = []
-    # 1. Snapshot manager – continuously creates DB backups
-    snapshot_path = os.path.join(BASE_DIR, "snapshot_manager")
-    processes.append(start_process([sys.executable, "snapshot.py"], cwd=snapshot_path))
+    print("==========================================================")
+    print("[SYSTEM] DeepBell AIOps SRE Cockpit Launcher")
+    print("==========================================================")
+    print("Starting unified web service on http://127.0.0.1:8000")
+    print("This launcher auto-recovers and restarts the app if killed.")
+    print("Press Ctrl+C to terminate.")
+    print("----------------------------------------------------------")
 
-    # 2. Watchdog – collects telemetry & runs anomaly detection
-    watchdog_path = os.path.join(BASE_DIR, "watchdog")
-    processes.append(start_process([sys.executable, "telemetry.py"], cwd=watchdog_path))
-
-    # 3. FastAPI target app – serves the dashboard and fault endpoints
-    target_path = os.path.join(BASE_DIR, "target_app")
-    processes.append(start_process([
-        sys.executable,
-        "-m",
-        "uvicorn",
-        "main:app",
-        "--reload",
-        "--host",
-        "127.0.0.1",
-        "--port",
-        "8000",
-    ], cwd=target_path))
-
-    print("✅ All services started. Press Ctrl+C to stop them.")
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        print("\n🛑 Shutting down services…")
-        for p in processes:
+    app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "target_app"))
+    
+    while True:
+        try:
+            # We launch uvicorn pointing to target_app/main.py. 
+            # We use uvicorn command directly with target_app directory in Python path
+            p = subprocess.Popen(
+                [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
+                cwd=app_dir
+            )
+            p.wait()
+            
+            if p.returncode == 0:
+                print("\n[SYSTEM] DeepBell SRE Cockpit exited cleanly.")
+                break
+            else:
+                print(f"\n[CRASH] Crash detected! Process exited with code {p.returncode}.")
+                print("[RECOVERY] Healing database & restarting service in 2 seconds...")
+                time.sleep(2)
+        except KeyboardInterrupt:
+            print("\n[SHUTDOWN] Stopping DeepBell SRE Cockpit Launcher.")
             try:
-                p.send_signal(signal.CTRL_BREAK_EVENT)
-                p.wait(timeout=5)
-            except Exception:
                 p.terminate()
-        print("✅ All services stopped.")
+            except Exception:
+                pass
+            break
 
 if __name__ == "__main__":
     main()

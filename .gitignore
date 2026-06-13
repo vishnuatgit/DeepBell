@@ -1,5 +1,25 @@
+# Runtime data
 data/
 backups/
+reports/
+
+# Python
 __pycache__/
 *.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+venv/
+.venv/
+
+# Environment variables
 .env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

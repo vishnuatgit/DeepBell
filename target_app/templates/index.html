@@ -3,49 +3,733 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeepBell Dashboard</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>DeepBell SRE Cockpit</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔔</text></svg>">
     <link rel="stylesheet" href="/static/styles.css">
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
+    <!-- Offline Reconnect Overlay -->
+    <div class="offline-overlay" id="offline-overlay">
+        <div class="offline-content">
+            <div class="offline-spinner"></div>
+            <h2>Server Unreachable</h2>
+            <p>The SRE Cockpit has lost connection to the backend. This may be due to a simulated crash or server restart.</p>
+            <p class="offline-sub" id="offline-status">Attempting to reconnect...</p>
+        </div>
+    </div>
+
+    <div class="glow-bg"></div>
+    <div class="glow-bg-2"></div>
     <div class="dashboard-container">
-        <aside class="sidebar">
-            <div class="brand">DeepBell SRE</div>
-            <ul class="nav-links">
-                <li class="active">Overview</li>
-                <li>Live Metrics</li>
-                <li>RCA History</li>
-                <li>Settings</li>
-            </ul>
-        </aside>
         
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="brand">
+                <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <span class="brand-text">DeepBell <span class="badge-sre">SRE</span></span>
+            </div>
+            <ul class="nav-links">
+                <li class="nav-item active" onclick="switchTab(this, 'overview')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="7" height="9" rx="1" />
+                        <rect x="14" y="3" width="7" height="5" rx="1" />
+                        <rect x="14" y="12" width="7" height="9" rx="1" />
+                        <rect x="3" y="16" width="7" height="5" rx="1" />
+                    </svg>
+                    Overview
+                </li>
+                <li class="nav-item" onclick="switchTab(this, 'metrics')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M3 3v18h18" stroke-linecap="round" stroke-linejoin="round"/>
+                        <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Live Telemetry
+                </li>
+                <li class="nav-item" onclick="switchTab(this, 'chaos')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
+                    </svg>
+                    Chaos Lab
+                </li>
+                <li class="nav-item" onclick="switchTab(this, 'backups')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="10"/>
+                        <path d="M12 6v6l4 2"/>
+                    </svg>
+                    Time Machine
+                </li>
+                <li class="nav-item" onclick="switchTab(this, 'settings')">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <circle cx="12" cy="12" r="3"/>
+                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                    </svg>
+                    Settings
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <div class="status-indicator-box">
+                    <div class="pulse-dot green" id="health-dot"></div>
+                    <span id="health-text">System Normal</span>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Panel -->
         <main class="main-content">
-            <div class="header">
-                <h1>AI Root Cause Analysis</h1>
-                <div class="status-badge">System Healthy</div>
-            </div>
             
-            <div class="report-card" id="report-container">
-                <!-- The markdown content will be injected here via JS -->
-            </div>
+            <!-- Global Dashboard Header -->
+            <header class="header">
+                <div class="header-title">
+                    <span class="subtitle">SRE Automation & Telemetry Analytics Console</span>
+                    <h1 id="page-title">SRE Cockpit Overview</h1>
+                </div>
+                <div class="status-cards">
+                    <div class="stat-card">
+                        <span class="stat-label">CPU Usage</span>
+                        <div class="stat-val-box">
+                            <span class="stat-value" id="header-cpu">0.0</span><span class="stat-unit">%</span>
+                        </div>
+                        <div class="stat-bar"><div class="stat-progress" id="cpu-bar" style="width: 0%;"></div></div>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label">RAM Allocation</span>
+                        <div class="stat-val-box">
+                            <span class="stat-value" id="header-ram">0.0</span><span class="stat-unit">MB</span>
+                        </div>
+                        <div class="stat-bar"><div class="stat-progress" id="ram-bar" style="width: 0%;"></div></div>
+                    </div>
+                </div>
+            </header>
+
+            <!-- TABS CONTENT SECTIONS -->
+            
+            <!-- 1. Overview Tab -->
+            <section id="tab-overview" class="tab-content active">
+                <div class="grid-layout">
+                    <div class="col-8">
+                        <div class="glass-panel report-section">
+                            <div class="panel-header">
+                                <h2>Latest Incident Post-Mortem Report</h2>
+                                <button class="btn btn-secondary" onclick="triggerManualRCA()" id="btn-rca-gen">
+                                    Trigger Documentation Generator
+                                </button>
+                            </div>
+                            <div class="report-card" id="report-container">
+                                <!-- Report content injected here -->
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-4">
+                        <div class="glass-panel agent-status-card">
+                            <h3>Telemetry Watchdog Status</h3>
+                            <div class="agent-activity-box">
+                                <div class="agent-avatar">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="avatar-svg">
+                                        <rect x="3" y="11" width="18" height="10" rx="2" />
+                                        <circle cx="12" cy="5" r="2"/>
+                                        <path d="M12 7v4" stroke-linecap="round"/>
+                                    </svg>
+                                </div>
+                                <div class="agent-details">
+                                    <h4 id="agent-state">Idle</h4>
+                                    <p id="agent-subtext">Monitoring server telemetry for deviations...</p>
+                                </div>
+                            </div>
+                            <div class="live-activity-feed">
+                                <div class="terminal-mockup">
+                                    <div class="terminal-header">
+                                        <div class="terminal-buttons">
+                                            <span class="terminal-dot red-dot"></span>
+                                            <span class="terminal-dot yellow-dot"></span>
+                                            <span class="terminal-dot green-dot"></span>
+                                        </div>
+                                        <div class="terminal-title">system_console</div>
+                                    </div>
+                                    <ul id="console-logs" class="console-logs">
+                                        <li class="log-info">[SYSTEM] Cockpit initialized. Background daemon active.</li>
+                                    </ul>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. Live Telemetry Tab -->
+            <section id="tab-metrics" class="tab-content">
+                <div class="grid-layout">
+                    <div class="col-12">
+                        <div class="glass-panel chart-container-panel">
+                            <div class="panel-header">
+                                <h2>Resource Telemetry Timeline</h2>
+                            </div>
+                            <div class="chart-wrapper">
+                                <canvas id="telemetryChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <h2>Real-Time System Metrics</h2>
+                                <span class="live-badge">POLLING ACTIVE</span>
+                            </div>
+                            <div class="table-container">
+                                <table class="metrics-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>CPU Usage</th>
+                                            <th>Memory RSS</th>
+                                            <th>Watchdog Evaluation</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="metrics-table-body">
+                                        <tr>
+                                            <td colspan="4" style="text-align: center;">Waiting for telemetry stream...</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. Chaos Lab Tab -->
+            <section id="tab-chaos" class="tab-content">
+                <div class="glass-panel">
+                    <div class="panel-header">
+                        <h2>Fault Injection Control Panel</h2>
+                        <p class="subtitle">Simulate real-world infrastructure failures to verify the auto-healing and incident analysis pipeline.</p>
+                    </div>
+                    <div class="chaos-grid">
+                        <div class="chaos-card cpu-spike-card" onclick="injectFault('/fault/cpu_spike?duration_sec=10', 'CPU Stress Test')">
+                            <div class="chaos-icon text-orange">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
+                                </svg>
+                            </div>
+                            <h3>CPU Spike Stress</h3>
+                            <p>Runs a blocking calculation loop in a background thread for 10 seconds.</p>
+                            <span class="chaos-btn">Inject Spike</span>
+                        </div>
+                        <div class="chaos-card memory-leak-card" onclick="injectFault('/fault/memory_leak?size_mb=60', 'Memory Leak Leakage')">
+                            <div class="chaos-icon text-red">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-11-7-11S5 10.7 5 15a7 7 0 0 0 7 7z"/>
+                                </svg>
+                            </div>
+                            <h3>Memory Allocation Leak</h3>
+                            <p>Leaks 60MB of unreleased array data blocks, triggering RAM anomalies.</p>
+                            <span class="chaos-btn">Inject Leak</span>
+                        </div>
+                        <div class="chaos-card db-corrupt-card" onclick="injectFault('/fault/corrupt_db', 'SQLite Database Corruption')">
+                            <div class="chaos-icon text-yellow">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                </svg>
+                            </div>
+                            <h3>Database Corruption</h3>
+                            <p>Writes garbage bytes into the active SQLite database to trigger crash states.</p>
+                            <span class="chaos-btn">Corrupt Database</span>
+                        </div>
+                        <div class="chaos-card crash-card" onclick="injectFault('/fault/fatal_crash', 'Fatal Server Exit')">
+                            <div class="chaos-icon text-purple">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                                    <path d="M9 9l6 6M15 9l-6 6" stroke-linecap="round"/>
+                                </svg>
+                            </div>
+                            <h3>Fatal Server Crash</h3>
+                            <p>Simulates a hard server crash (`sys.exit(1)`). Autorecovery will restart the service.</p>
+                            <span class="chaos-btn">Crash Server</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. Time Machine Tab -->
+            <section id="tab-backups" class="tab-content">
+                <div class="glass-panel">
+                    <div class="panel-header">
+                        <h2>Database Recovery Time Machine</h2>
+                        <p class="subtitle">Roll back the database state to any snapshot point. Snapshots are taken automatically every 30 seconds.</p>
+                    </div>
+                    <div class="table-container">
+                        <table class="metrics-table">
+                            <thead>
+                                <tr>
+                                    <th>Snapshot Timestamp</th>
+                                    <th>File Name</th>
+                                    <th>Size</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="backups-table-body">
+                                <tr>
+                                    <td colspan="4" style="text-align: center;">Scanning snapshots directory...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5. Settings Tab -->
+            <section id="tab-settings" class="tab-content">
+                <div class="glass-panel">
+                    <div class="panel-header">
+                        <h2>Agent Settings</h2>
+                    </div>
+                    <div class="form-container">
+                        <div class="form-group">
+                            <label for="settings-api-key">Google Gemini API Key</label>
+                            <p class="form-help">Enter your API key from Google AI Studio. This enables the documentation engine to generate post-mortem incident reports.</p>
+                            <input type="password" id="settings-api-key" placeholder="{% if api_key_configured %}API Key Configured (••••••••) {% else %}Enter your Gemini API key{% endif %}" value="" class="form-control">
+                        </div>
+                        <button class="btn btn-primary" onclick="saveApiKey()">Save Changes</button>
+                        <p id="settings-feedback" class="feedback-msg"></p>
+                    </div>
+                </div>
+            </section>
+
         </main>
     </div>
 
-    <!-- Hidden div to hold the raw markdown from Jinja -->
+    <!-- Hidden Raw Markdown Data -->
     <div id="raw-markdown" style="display: none;">{{ report_content }}</div>
 
     <script>
-        // Parse the markdown passed from FastAPI into HTML
+        // Tab switching logic
+        function switchTab(element, tabId) {
+            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            if (element) {
+                element.classList.add('active');
+            } else {
+                // Fallback highlighting based on tabId
+                const items = document.querySelectorAll('.nav-item');
+                items.forEach(item => {
+                    const text = item.innerText.toLowerCase();
+                    if ((tabId === 'metrics' && text.includes('telemetry')) ||
+                        (tabId === 'backups' && text.includes('time')) ||
+                        text.includes(tabId)) {
+                        item.classList.add('active');
+                    }
+                });
+            }
+
+            document.getElementById(`tab-${tabId}`).classList.add('active');
+            document.getElementById('page-title').innerText = `SRE Cockpit ${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`;
+
+            if (tabId === 'backups') {
+                loadBackups();
+            } else if (tabId === 'metrics' && telemetryChart) {
+                // Resize chart to prevent collapse inside hidden display layout
+                setTimeout(() => {
+                    telemetryChart.resize();
+                    telemetryChart.update();
+                }, 50);
+            }
+        }
+
+        // Add log to console panel
+        function addConsoleLog(message, type = 'info') {
+            const consoleBox = document.getElementById('console-logs');
+            const newLog = document.createElement('li');
+            const timeStr = new Date().toLocaleTimeString();
+            newLog.innerText = `[${timeStr}] ${message}`;
+            newLog.className = `log-${type}`;
+            consoleBox.insertBefore(newLog, consoleBox.firstChild);
+            
+            while (consoleBox.children.length > 30) {
+                consoleBox.removeChild(consoleBox.lastChild);
+            }
+        }
+
+        // Live status monitoring
+        let lastHealthState = "Healthy";
+        function checkStatus() {
+            fetch('/api/status')
+                .then(res => res.json())
+                .then(data => {
+                    // Update CPU and RAM
+                    document.getElementById('header-cpu').innerText = data.cpu.toFixed(1);
+                    document.getElementById('header-ram').innerText = data.ram.toFixed(1);
+                    
+                    const cpuBar = document.getElementById('cpu-bar');
+                    const ramBar = document.getElementById('ram-bar');
+                    cpuBar.style.width = `${Math.min(data.cpu, 100)}%`;
+                    ramBar.style.width = `${Math.min((data.ram / 500) * 100, 100)}%`;
+
+                    if (data.cpu > 80) cpuBar.style.backgroundColor = '#ef4444';
+                    else if (data.cpu > 50) cpuBar.style.backgroundColor = '#f97316';
+                    else cpuBar.style.backgroundColor = '#00f2fe';
+
+                    if (data.ram > 200) ramBar.style.backgroundColor = '#ef4444';
+                    else if (data.ram > 120) ramBar.style.backgroundColor = '#f97316';
+                    else ramBar.style.backgroundColor = '#00f2fe';
+
+                    // Update health dot & sidebar status
+                    const healthDot = document.getElementById('health-dot');
+                    const healthText = document.getElementById('health-text');
+                    
+                    healthDot.className = 'pulse-dot';
+                    if (data.status.includes('Anomalous')) {
+                        healthDot.classList.add('red');
+                        healthText.innerText = data.status;
+                        
+                        if (lastHealthState !== data.status) {
+                            addConsoleLog(`[ALERT] Watchdog flagged system anomaly: ${data.status}`, 'error');
+                            lastHealthState = data.status;
+                        }
+                    } else if (data.status.includes('Training')) {
+                        healthDot.classList.add('yellow');
+                        healthText.innerText = "Training Model...";
+                    } else {
+                        healthDot.classList.add('green');
+                        healthText.innerText = "System Normal";
+                        if (lastHealthState !== "Healthy") {
+                            addConsoleLog(`[SYSTEM] System health recovered to normal.`, 'info');
+                            lastHealthState = "Healthy";
+                        }
+                    }
+
+                    // Update Documentation Generator State
+                    const agentState = document.getElementById('agent-state');
+                    const agentSubtext = document.getElementById('agent-subtext');
+                    const rcaBtn = document.getElementById('btn-rca-gen');
+
+                    if (data.is_generating_rca) {
+                        agentState.innerText = "Analyzing Telemetry...";
+                        agentSubtext.innerText = "Generating incident documentation from telemetry metrics...";
+                        rcaBtn.disabled = true;
+                        rcaBtn.innerText = "Generating...";
+                    } else {
+                        agentState.innerText = data.status.includes('Anomalous') ? "Incident Document Ready" : "Idle";
+                        agentSubtext.innerText = data.status.includes('Anomalous') 
+                            ? "RCA Report completed and pushed to dashboard overview." 
+                            : "Monitoring metrics database...";
+                        rcaBtn.disabled = false;
+                        rcaBtn.innerText = "Trigger Documentation Generator";
+                    }
+                })
+                .catch(err => {
+                    const healthDot = document.getElementById('health-dot');
+                    const healthText = document.getElementById('health-text');
+                    healthDot.className = 'pulse-dot red';
+                    healthText.innerText = "Offline / Reconnecting";
+                    showOfflineOverlay();
+                });
+        }
+
+        // Initialize Live Telemetry Charts (Chart.js)
+        let telemetryChart = null;
+        function initChart() {
+            const ctx = document.getElementById('telemetryChart').getContext('2d');
+            telemetryChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: [],
+                    datasets: [
+                        {
+                            label: 'CPU Usage (%)',
+                            borderColor: '#00f2fe',
+                            backgroundColor: 'rgba(0, 242, 254, 0.1)',
+                            borderWidth: 2,
+                            data: [],
+                            yAxisID: 'y-cpu',
+                            tension: 0.3
+                        },
+                        {
+                            label: 'RAM Allocation (MB)',
+                            borderColor: '#7000ff',
+                            backgroundColor: 'rgba(112, 0, 255, 0.1)',
+                            borderWidth: 2,
+                            data: [],
+                            yAxisID: 'y-ram',
+                            tension: 0.3
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+                        },
+                        'y-cpu': {
+                            type: 'linear',
+                            position: 'left',
+                            min: 0,
+                            max: 100,
+                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
+                            ticks: { color: '#00f2fe' }
+                        },
+                        'y-ram': {
+                            type: 'linear',
+                            position: 'right',
+                            min: 0,
+                            grid: { drawOnChartArea: false },
+                            ticks: { color: '#c084fc' }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: { color: '#f8fafc', font: { family: 'Plus Jakarta Sans', weight: 'bold' } }
+                        }
+                    }
+                }
+            });
+        }
+
+        // Live telemetry polling
+        function loadTelemetry() {
+            fetch('/api/metrics')
+                .then(res => res.json())
+                .then(data => {
+                    const tbody = document.getElementById('metrics-table-body');
+                    tbody.innerHTML = '';
+                    
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No metrics database records found yet.</td></tr>';
+                        return;
+                    }
+
+                    // Reverse data to show chronological order on the chart (left to right)
+                    const chartData = [...data].reverse();
+                    const labels = chartData.map(m => m.timestamp.split(' ')[1]);
+                    const cpuData = chartData.map(m => m.cpu);
+                    const ramData = chartData.map(m => m.ram);
+
+                    if (telemetryChart) {
+                        telemetryChart.data.labels = labels;
+                        telemetryChart.data.datasets[0].data = cpuData;
+                        telemetryChart.data.datasets[1].data = ramData;
+                        telemetryChart.update('none'); // Update without animation for performance
+                    }
+
+                    // Render table (newest first)
+                    data.forEach(m => {
+                        const tr = document.createElement('tr');
+                        const isAnomalous = m.status.includes('Anomalous');
+                        
+                        tr.innerHTML = `
+                            <td>${m.timestamp}</td>
+                            <td>${m.cpu.toFixed(1)}%</td>
+                            <td>${m.ram.toFixed(1)} MB</td>
+                            <td><span class="table-badge ${isAnomalous ? 'red' : 'green'}">${m.status}</span></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                });
+        }
+
+        // Time Machine Load backups
+        function loadBackups() {
+            fetch('/api/backups')
+                .then(res => res.json())
+                .then(data => {
+                    const tbody = document.getElementById('backups-table-body');
+                    tbody.innerHTML = '';
+                    
+                    if (data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No backups found.</td></tr>';
+                        return;
+                    }
+
+                    data.forEach(b => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td>${b.timestamp}</td>
+                            <td>${b.filename}</td>
+                            <td>${b.size_kb} KB</td>
+                            <td>
+                                <button class="btn btn-small" onclick="rollbackToBackup('${b.filename}')">
+                                    Restore DB
+                                </button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                });
+        }
+
+        // Action: Rollback database to a snapshot
+        function rollbackToBackup(filename) {
+            if (!confirm(`Are you sure you want to roll back the database to the snapshot: ${filename}?`)) {
+                return;
+            }
+            
+            const formData = new FormData();
+            formData.append("filename", filename);
+
+            addConsoleLog(`[TIME MACHINE] Initiating manual restoration of backup: ${filename}...`, 'warn');
+            fetch('/api/rollback', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    addConsoleLog(`[TIME MACHINE] Database restored successfully to: ${filename}`, 'green');
+                    alert(data.message);
+                    loadBackups();
+                } else {
+                    addConsoleLog(`[ERROR] Rollback failed: ${data.detail || data.message}`, 'error');
+                    alert("Restoration failed: " + (data.detail || data.message));
+                }
+            })
+            .catch(err => {
+                addConsoleLog(`[ERROR] Connection error during rollback.`, 'error');
+                alert("Database rollback request failed.");
+            });
+        }
+
+        // Action: Trigger LLM RCA manually
+        function triggerManualRCA() {
+            addConsoleLog("[SYSTEM] Manual incident report synthesis requested...", 'warn');
+            fetch('/api/rca/generate', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    addConsoleLog(`[SYSTEM] ${data.message}`, 'info');
+                    setTimeout(reloadRCAReport, 6000);
+                });
+        }
+
+        function reloadRCAReport() {
+            fetch('/')
+                .then(res => res.text())
+                .then(html => {
+                    const parser = new DOMParser();
+                    const doc = parser.parseFromString(html, 'text/html');
+                    const rawElem = doc.getElementById('raw-markdown');
+                    if (!rawElem) return;
+                    const newRaw = rawElem.innerText;
+                    
+                    const reportContainer = document.getElementById('report-container');
+                    if (newRaw.includes('No RCA reports generated yet')) {
+                        reportContainer.innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">${newRaw}</p>`;
+                    } else {
+                        reportContainer.innerHTML = marked.parse(newRaw);
+                    }
+                    addConsoleLog("[SYSTEM] Report view refreshed.", 'green');
+                });
+        }
+
+        // Action: Inject chaos fault
+        function injectFault(url, name) {
+            addConsoleLog(`[CHAOS LAB] Triggering injection of: ${name}...`, 'warn');
+            fetch(url)
+                .then(res => res.json())
+                .then(data => {
+                    addConsoleLog(`[CHAOS LAB] Injection acknowledged: ${JSON.stringify(data)}`, 'info');
+                    if (url.includes('fatal_crash')) {
+                        addConsoleLog("[CHAOS LAB] Server terminating. Dashboard will temporarily disconnect and reconnect.", 'error');
+                    }
+                })
+                .catch(err => {
+                    addConsoleLog(`[ERROR] Failed to contact server during chaos injection.`, 'error');
+                });
+        }
+
+        // Action: Settings API key save
+        function saveApiKey() {
+            const key = document.getElementById('settings-api-key').value;
+            const feedback = document.getElementById('settings-feedback');
+            
+            if (!key.trim()) {
+                feedback.innerText = "Key cannot be empty.";
+                feedback.className = "feedback-msg red";
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append("api_key", key);
+
+            feedback.innerText = "Saving API key...";
+            feedback.className = "feedback-msg";
+
+            fetch('/api/settings/apikey', {
+                method: 'POST',
+                body: formData
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    feedback.innerText = "Settings saved successfully.";
+                    feedback.className = "feedback-msg green";
+                    addConsoleLog("[SETTINGS] API Key configuration updated.", 'green');
+                } else {
+                    feedback.innerText = data.detail || "Failed to save key.";
+                    feedback.className = "feedback-msg red";
+                }
+            })
+            .catch(err => {
+                feedback.innerText = "Error contacting server.";
+                feedback.className = "feedback-msg red";
+            });
+        }
+
+        // Offline overlay management
+        let isOffline = false;
+        let reconnectInterval = null;
+
+        function showOfflineOverlay() {
+            if (isOffline) return;
+            isOffline = true;
+            document.getElementById('offline-overlay').classList.add('active');
+            addConsoleLog('[SYSTEM] Server connection lost. Reconnecting...', 'error');
+
+            let attempts = 0;
+            reconnectInterval = setInterval(() => {
+                attempts++;
+                document.getElementById('offline-status').innerText = `Reconnect attempt ${attempts}...`;
+                fetch('/api/status')
+                    .then(res => res.json())
+                    .then(() => {
+                        clearInterval(reconnectInterval);
+                        reconnectInterval = null;
+                        isOffline = false;
+                        document.getElementById('offline-overlay').classList.remove('active');
+                        addConsoleLog('[SYSTEM] Connection restored. Dashboard re-synced.', 'green');
+                        checkStatus();
+                        loadTelemetry();
+                        reloadRCAReport();
+                    })
+                    .catch(() => {});
+            }, 2000);
+        }
+
+        // Initial setup
         document.addEventListener('DOMContentLoaded', () => {
+            // Render initial markdown
             const rawMarkdown = document.getElementById('raw-markdown').innerText;
             const reportContainer = document.getElementById('report-container');
-            
             if (rawMarkdown.includes('No RCA reports generated yet')) {
-                reportContainer.innerHTML = `<p style="color: var(--text-secondary); text-align: center;">${rawMarkdown}</p>`;
+                reportContainer.innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">${rawMarkdown}</p>`;
             } else {
                 reportContainer.innerHTML = marked.parse(rawMarkdown);
             }
+
+            // Initialize Telemetry Chart
+            initChart();
+
+            // Periodic updates
+            setInterval(checkStatus, 2000);
+            setInterval(loadTelemetry, 3000);
+            
+            checkStatus();
+            loadTelemetry();
         });
     </script>
 </body>
