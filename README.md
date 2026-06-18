@@ -1,137 +1,103 @@
-# DeepBell: AI-Driven Point-in-Time Recovery & Root Cause Analysis
+# DeepBell: Automated Point-in-Time Recovery & Telemetry Analytics Console
 
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.104-009688?logo=fastapi)
-![LangChain](https://img.shields.io/badge/LangChain-Gemini-4285F4)
-![ML](https://img.shields.io/badge/ML-IsolationForest-orange)
 ![Frontend](https://img.shields.io/badge/Frontend-HTML%20%7C%20CSS-e34f26)
 ![Status](https://img.shields.io/badge/Status-Complete-brightgreen)
 
-**DeepBell** is a two-week Major Project in Site Reliability Engineering (SRE) and AIOps, built strictly using Python, HTML, and CSS. It is an autonomous monitoring agent that uses Machine Learning to detect systemic failures in real time, executes automated Point-in-Time Recovery (PITR), and leverages a Large Language Model (Google Gemini via LangChain) to synthesize a professional Root Cause Analysis (RCA) report — all without human intervention.
+DeepBell is a self-contained SRE (Site Reliability Engineering) automation platform. It logs process telemetry, uses unsupervised anomaly detection to identify performance deviations, performs automated database restoration from rolling snapshots, and generates structured post-mortem incident reports summarizing system states prior to failure.
+
+All background deamons (snapshot manager, telemetry collector, and anomaly detector) run concurrently as managed background threads inside the FastAPI process, controlled by a self-healing supervisor wrapper.
 
 ---
 
 ## System Architecture
 
-DeepBell is structured as four independent Python modules that form a complete autonomous recovery pipeline:
+The application is structured into a unified web service running dedicated SRE background threads, controlled by a supervisor process wrapper:
 
 ```
 deepbell/
-├── target_app/          # The victim FastAPI service (SQLite backend + HTML/CSS dashboard)
-│   ├── main.py          # FastAPI app with fault injection endpoints + Jinja2 dashboard route
-│   ├── requirements.txt
+├── target_app/          # Unified Web Application & SRE Core
+│   ├── main.py          # FastAPI server + Background SRE Threads + Cockpit APIs
+│   ├── requirements.txt # Consolidated dependencies
 │   ├── templates/
-│   │   └── index.html   # Clean dark mode dashboard (Vanilla HTML)
+│   │   └── index.html   # HTML5 Cockpit Dashboard (Multi-tab SRE Console)
 │   └── static/
-│       └── styles.css   # Glassmorphism CSS (zero frameworks)
+│       └── styles.css   # Responsive Glassmorphism CSS (Zero Frameworks)
 │
-├── snapshot_manager/    # PITR daemon: rolling 30-second database snapshots
-│   └── snapshot.py
-│
-├── watchdog/            # ML anomaly detection engine
-│   ├── telemetry.py     # Streams live psutil metrics to SQLite
-│   └── anomaly.py       # IsolationForest model for anomaly scoring
-│
-├── responder/           # Agentic auto-recovery and LLM RCA synthesis
-│   ├── rollback.py      # Kills crashed process, restores DB, restarts app
-│   ├── llm_analyst.py   # LangChain + Gemini pipeline to generate RCA reports
-│   └── requirements.txt
-│
-└── data/                # Runtime databases (app.db, metrics.db) and backups/
+├── run_all.py           # Auto-Recovery Launcher Loop (Supervised execution wrapper)
+├── data/                # Data storage directory (app.db, metrics.db)
+├── backups/             # Point-in-Time database backups (.db.bak)
+├── reports/             # Generated Post-Mortem incident reports (.md)
+└── .gitignore           # Excludes data, backups, reports, venv, .env
 ```
 
 ```mermaid
 graph TD;
-    A[Target FastAPI App] -->|Writes Data| B[(SQLite DB)]
-    C[Snapshot Manager] -->|Backs up every 30s| B
-    D[Watchdog - IsolationForest] -->|Monitors CPU, RAM, Process| A
-    D -->|Anomaly Detected| E[Agentic Responder]
-    E -->|Kills Process + Restores DB| B
-    E -->|Restarts App| A
-    E -->|Queries Metrics| F[LangChain + Gemini LLM]
-    F -->|Writes Markdown Report| G[HTML/CSS Dashboard]
+    subgraph FastAPI Web Service
+        A[Dashboard UI / HTML] <--> B[FastAPI Engine]
+        B -->|Reads/Writes| C[(SQLite app.db)]
+        B -->|Background Thread| D[Snapshot Manager]
+        B -->|Background Thread| E[Telemetry Watchdog]
+        E -->|Writes Metrics| F[(SQLite metrics.db)]
+        E -->|Auto-Triggers| G[Post-Mortem Engine]
+        G -->|Fetches Telemetry| F
+        G -->|Saves Incident Report| H[RCA Reports]
+        A -->|Renders| H
+    end
+    
+    subgraph Launcher Wrapper
+        I[run_all.py Wrapper Loop] -->|Monitors Process| B
+        B -->|Fatal Exit Code 1| I
+        I -->|Auto-Restarts Server| B
+    end
 ```
 
 ---
 
 ## Core Features
 
-- **Autonomous Anomaly Detection:** A background `watchdog` continuously streams process-level metrics (CPU %, RAM %, thread count) via `psutil` and scores each reading using a trained `IsolationForest` model. No thresholds. No manual rules.
-- **Point-in-Time Recovery (PITR):** The `snapshot_manager` maintains rolling 30-second SQLite backups. The `responder` automatically restores the most recent healthy snapshot the moment a crash is confirmed.
-- **Agentic RCA Generation:** The `responder` queries pre-crash telemetry from the metrics database, structures it into a prompt, and calls Google Gemini via LangChain to generate a professional post-mortem in Markdown.
-- **Live Web Dashboard:** A clean dark mode dashboard is served directly by FastAPI using Jinja2 templates. It automatically loads and renders the latest AI-generated RCA report using `marked.js`.
-- **Chaos Engineering Endpoints:** Built-in fault injection for realistic testing — memory leaks, CPU spikes, database corruption, and fatal process crashes.
+- **Integrated Telemetry Threads:** Telemetry collection and snapshotting are initiated automatically upon server startup, eliminating the need for disjointed background processes.
+- **Unsupervised Anomaly Detection:** An internal watchdog logs process CPU and memory footprints, using an `IsolationForest` model to detect multidimensional metric deviations in real-time.
+- **Database Time Machine:** Automatically snapshots the database state every 30 seconds (retaining a rolling window of the last 10 backups). Database states can be restored manually with a single click via the Web UI.
+- **Startup Database Integrity Verification:** Checks database integrity on start. If corruption is detected (e.g., failed read query), the system restores the last valid database snapshot automatically before launching the server.
+- **Supervisor Wrapper:** Monitors process health. If the server exits due to a fatal crash, the wrapper automatically heals the database and restarts uvicorn in 2 seconds.
+- **Automated Incident Documentation:** Synthesizes pre-crash metrics into a structured Post-Mortem report, logging the sequence of events and performance thresholds breached.
 
 ---
 
 ## Getting Started
 
-### Prerequisites
+### 1. Prerequisites
 - Python 3.10+
-- A free Google Gemini API key from [Google AI Studio](https://aistudio.google.com/)
+- An API Key (configured in settings) to synthesize detailed Markdown reports
 
-### 1. Start the Target Application + Dashboard
+### 2. Installation
+Install dependencies inside your virtual environment:
 ```bash
-cd target_app
-pip install -r requirements.txt
-python -m uvicorn main:app --reload
-```
-Open `http://127.0.0.1:8000` to see the live dashboard.
-API docs at `http://127.0.0.1:8000/docs`.
-
-### 2. Start the Snapshot Manager (separate terminal)
-```bash
-cd snapshot_manager
-python snapshot.py
+pip install -r target_app/requirements.txt
 ```
 
-### 3. Start the Watchdog (separate terminal)
+### 3. Launching the Cockpit
+Start the supervised wrapper from the project root:
 ```bash
-cd watchdog
-pip install -r requirements.txt
-python telemetry.py
+python run_all.py
 ```
-
-### 4. Configure the Responder
-Create a `.env` file inside the `responder/` directory:
-```
-GOOGLE_API_KEY=your_api_key_here
-```
-Then run the RCA generation manually after a crash:
-```bash
-cd responder
-pip install -r requirements.txt
-python rollback.py       # Restore system
-python llm_analyst.py    # Generate RCA report
-```
+Open your browser and navigate to `http://127.0.0.1:8000` to access the dashboard.
 
 ---
 
-## Chaos Testing
+## Fault Simulation Lab
 
-Simulate real-world catastrophic failures against the live app to trigger the full recovery pipeline:
+Use the dashboard's Chaos Lab tab to inject faults and verify the automated recovery pipeline:
 
-| Endpoint | Type | Effect |
+| Fault | Target | System Response |
 |---|---|---|
-| `GET /fault/memory_leak?size_mb=50` | Memory | Allocates unreleased memory blocks |
-| `GET /fault/cpu_spike?duration_sec=5` | CPU | Runs a blocking busy-loop |
-| `GET /fault/corrupt_db` | Database | Writes garbage bytes to SQLite |
-| `GET /fault/fatal_crash` | Process | Calls `sys.exit(1)` — kills the server |
+| **CPU Spike** | CPU Threading | Watchdog flags CPU anomaly and initiates incident documentation. |
+| **Memory Leak** | RAM Allocation | Memory threshold is breached. Anomaly detector logs incident state. |
+| **Database Corruption** | SQLite File | Appends junk bytes to SQLite database. Recovery thread restores the last valid snapshot. |
+| **Fatal Process Exit** | Web Process | Shuts down uvicorn. The `run_all.py` loop detects the exit, verifies database, and restarts. |
 
 ---
 
-
----
-
-## What Remains (Optional Enhancements)
-
-The core system is fully functional. The following are potential extensions for future work:
-
-- **Real-time WebSocket metrics** on the dashboard (live CPU/RAM graphs without page refresh)
-- **Email / Slack alerting** when the Watchdog triggers a recovery event
-- **Multi-app support** — extending the Watchdog to monitor more than one process simultaneously
-- **Persistent ML model training** — saving and reloading the IsolationForest model after learning a baseline
-
----
-
-*Developed as a Major Project in Distributed Systems, AIOps, and Agentic AI. Built entirely in Python, HTML, and CSS.*
+*Developed as a SRE Automation & Telemetry Analytics project. Built entirely with Python, HTML, and CSS.*
