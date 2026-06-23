@@ -7,7 +7,7 @@
 
 DeepBell is a self-contained SRE (Site Reliability Engineering) automation platform. It logs process telemetry, uses unsupervised anomaly detection to identify performance deviations, performs automated database restoration from rolling snapshots, and generates structured post-mortem incident reports summarizing system states prior to failure.
 
-All background deamons (snapshot manager, telemetry collector, and anomaly detector) run concurrently as managed background threads inside the FastAPI process, controlled by a self-healing supervisor wrapper.
+All background daemons (snapshot manager, telemetry collector, and anomaly detector) run concurrently as managed background threads inside the FastAPI process, controlled by a self-healing supervisor wrapper.
 
 ---
 

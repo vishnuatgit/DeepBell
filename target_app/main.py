@@ -455,13 +455,8 @@ def post_save_apikey(api_key: str = Form(...)):
     try:
         with open(ENV_FILE, "w") as f:
             f.write(f"GOOGLE_API_KEY={api_key}\n")
-        
-        # Save to responder/.env file as well for compatibility
-        responder_env = os.path.join(PROJECT_ROOT, "responder", ".env")
-        with open(responder_env, "w") as f:
-            f.write(f"GOOGLE_API_KEY={api_key}\n")
 
-        logger.info("Gemini API key successfully saved across configuration files.")
+        logger.info("Gemini API key successfully saved to configuration.")
         return {"status": "success", "message": "API key saved successfully."}
     except Exception as e:
         logger.error(f"Failed to write API Key to file: {e}")
