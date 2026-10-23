@@ -119,6 +119,9 @@
                                     Trigger Documentation Generator
                                 </button>
                             </div>
+                            {% if not api_key_configured %}
+                            <p class="form-help">AI reports need a Google Gemini API key (Settings tab or <code>GOOGLE_API_KEY</code>). Without one, DeepBell writes a built-in template report from the same telemetry.</p>
+                            {% endif %}
                             <div class="report-card" id="report-container">
                                 <!-- Report content injected here -->
                             </div>
@@ -247,7 +250,7 @@
                                 </svg>
                             </div>
                             <h3>Fatal Server Crash</h3>
-                            <p>Simulates a hard server crash (`sys.exit(1)`). Autorecovery will restart the service.</p>
+                            <p>Hard-exits the process (<code>os._exit(1)</code>). The run_all.py supervisor restarts it.</p>
                             <span class="chaos-btn">Crash Server</span>
                         </div>
                     </div>

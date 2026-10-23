@@ -1,7 +1,8 @@
+import os
 import subprocess
 import sys
 import time
-import os
+
 
 def main():
     print("==========================================================")
@@ -13,17 +14,26 @@ def main():
     print("----------------------------------------------------------")
 
     app_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "target_app"))
-    
+
     while True:
         try:
-            # We launch uvicorn pointing to target_app/main.py. 
+            # We launch uvicorn pointing to target_app/main.py.
             # We use uvicorn command directly with target_app directory in Python path
             p = subprocess.Popen(
-                [sys.executable, "-m", "uvicorn", "main:app", "--host", "127.0.0.1", "--port", "8000"],
-                cwd=app_dir
+                [
+                    sys.executable,
+                    "-m",
+                    "uvicorn",
+                    "main:app",
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "8000",
+                ],
+                cwd=app_dir,
             )
             p.wait()
-            
+
             if p.returncode == 0:
                 print("\n[SYSTEM] DeepBell SRE Cockpit exited cleanly.")
                 break
@@ -38,6 +48,7 @@ def main():
             except Exception:
                 pass
             break
+
 
 if __name__ == "__main__":
     main()

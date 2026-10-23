@@ -23,3 +23,10 @@ venv/
 .idea/
 *.swp
 *.swo
+
+# Test and coverage output
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
