@@ -1,0 +1,4 @@
+* text=auto
+# The dashboard markup and styles are not the core of the project; keep Python as the primary language.
+target_app/templates/** linguist-vendored
+target_app/static/** linguist-vendored

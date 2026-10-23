@@ -1,19 +1,20 @@
-import time
-import os
-import sqlite3
-import logging
-import uuid
-import sys
 import glob
+import logging
+import os
+import re
 import shutil
+import sqlite3
+import sys
 import threading
+import time
+import uuid
 from datetime import datetime
-from typing import List, Dict
-from fastapi import FastAPI, HTTPException, Request, Form
-from fastapi.templating import Jinja2Templates
-from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, JSONResponse
+
 from dotenv import load_dotenv
+from fastapi import FastAPI, Form, HTTPException, Request
+from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
 
 # Load environment variables
 load_dotenv()
@@ -21,8 +22,8 @@ load_dotenv()
 # Setup logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    stream=sys.stdout
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    stream=sys.stdout,
 )
 logger = logging.getLogger("DeepBellCockpit")
 
@@ -31,11 +32,15 @@ app = FastAPI(title="DeepBell SRE Cockpit")
 # Directory Definitions
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, ".."))
-DB_FILE = os.path.join(PROJECT_ROOT, "data", "app.db")
-METRICS_DB = os.path.join(PROJECT_ROOT, "data", "metrics.db")
-BACKUP_DIR = os.path.join(PROJECT_ROOT, "backups")
-REPORTS_DIR = os.path.join(PROJECT_ROOT, "reports")
-ENV_FILE = os.path.join(PROJECT_ROOT, ".env")
+DATA_DIR = os.getenv("DEEPBELL_DATA_DIR", os.path.join(PROJECT_ROOT, "data"))
+DB_FILE = os.path.join(DATA_DIR, "app.db")
+METRICS_DB = os.path.join(DATA_DIR, "metrics.db")
+BACKUP_DIR = os.getenv("DEEPBELL_BACKUP_DIR", os.path.join(PROJECT_ROOT, "backups"))
+REPORTS_DIR = os.getenv("DEEPBELL_REPORTS_DIR", os.path.join(PROJECT_ROOT, "reports"))
+ENV_FILE = os.getenv("DEEPBELL_ENV_FILE", os.path.join(PROJECT_ROOT, ".env"))
+# Set DEEPBELL_DISABLE_WORKERS=1 to skip the background threads (used by the test suite).
+WORKERS_ENABLED = os.getenv("DEEPBELL_DISABLE_WORKERS", "").lower() not in ("1", "true", "yes")
+BACKUP_NAME_RE = re.compile(r"^app_\d{8}_\d{6}\.db\.bak$")
 
 # Ensure directories exist
 os.makedirs(os.path.dirname(DB_FILE), exist_ok=True)
@@ -54,30 +59,34 @@ last_cpu = 0.0
 last_ram = 0.0
 is_generating_rca = False
 
+
 # Database helper functions
 def get_db():
     return sqlite3.connect(DB_FILE)
 
+
 def get_metrics_db():
     return sqlite3.connect(METRICS_DB)
+
 
 def init_db():
     conn = get_db()
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS transactions (
             id TEXT PRIMARY KEY,
             amount REAL,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
-    ''')
+    """)
     conn.commit()
     conn.close()
+
 
 def init_metrics_db():
     conn = get_metrics_db()
     cursor = conn.cursor()
-    cursor.execute('''
+    cursor.execute("""
         CREATE TABLE IF NOT EXISTS metrics (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -85,29 +94,35 @@ def init_metrics_db():
             cpu_percent REAL,
             memory_mb REAL
         )
-    ''')
+    """)
     # Check if anomaly_status column exists and add it if not
     cursor.execute("PRAGMA table_info(metrics)")
     columns = [col[1] for col in cursor.fetchall()]
-    if 'anomaly_status' not in columns:
+    if "anomaly_status" not in columns:
         cursor.execute("ALTER TABLE metrics ADD COLUMN anomaly_status TEXT DEFAULT 'Normal'")
         logger.info("Database migration: Added anomaly_status column to metrics table.")
     conn.commit()
     conn.close()
 
+
 # Self-Healing Database Integrity Check
 def verify_and_heal_database():
     logger.info("Verifying database integrity...")
+    if not os.path.exists(DB_FILE):
+        return
     try:
         conn = get_db()
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        cursor.fetchall()
-        conn.close()
+        try:
+            result = conn.execute("PRAGMA quick_check").fetchone()
+        finally:
+            conn.close()
+        if not result or result[0] != "ok":
+            raise sqlite3.DatabaseError(f"quick_check returned {result}")
         logger.info("Database integrity verified successfully.")
     except Exception as e:
         logger.error(f"Database corruption detected: {e}. Executing auto-recovery...")
         restore_latest_backup()
+
 
 def restore_latest_backup() -> bool:
     backups = glob.glob(os.path.join(BACKUP_DIR, "app_*.db.bak"))
@@ -124,6 +139,7 @@ def restore_latest_backup() -> bool:
     except Exception as e:
         logger.error(f"Failed to restore database: {e}")
         return False
+
 
 # Background Snapshot Worker
 def snapshot_manager_worker():
@@ -144,7 +160,9 @@ def snapshot_manager_worker():
                 logger.info(f"Auto-snapshot created: {os.path.basename(backup_file)}")
 
                 # Cleanup old snapshots (> 10)
-                snapshots = sorted(glob.glob(os.path.join(BACKUP_DIR, "app_*.db.bak")), key=os.path.getctime)
+                snapshots = sorted(
+                    glob.glob(os.path.join(BACKUP_DIR, "app_*.db.bak")), key=os.path.getctime
+                )
                 while len(snapshots) > 10:
                     oldest = snapshots.pop(0)
                     os.remove(oldest)
@@ -153,13 +171,15 @@ def snapshot_manager_worker():
             logger.error(f"Snapshot Manager Error: {e}")
         time.sleep(30)
 
+
 # Background Watchdog & Anomaly Detection Worker
 def watchdog_worker():
     global system_health, latest_anomaly_score, last_cpu, last_ram
     logger.info("Watchdog Telemetry & Anomaly Detector started.")
-    
+
     # Initialize psutil Process object for our own PID
     import psutil
+
     process = psutil.Process(os.getpid())
     # First CPU read to establish baseline
     process.cpu_percent(interval=None)
@@ -169,23 +189,25 @@ def watchdog_worker():
         try:
             # 1. Telemetry Collection
             cpu = process.cpu_percent(interval=None)
-            mem = process.memory_info().rss / (1024 * 1024) # RSS in MB
+            mem = process.memory_info().rss / (1024 * 1024)  # RSS in MB
             last_cpu = round(cpu, 1)
             last_ram = round(mem, 1)
 
             # 2. Anomaly Detection using Isolation Forest
-            anomaly_status = "Normal"
             conn = get_metrics_db()
-            
+
             # Fetch past metrics to train model
             import pandas as pd
-            df = pd.read_sql_query("SELECT cpu_percent, memory_mb FROM metrics ORDER BY id DESC LIMIT 200", conn)
-            
+
+            df = pd.read_sql_query(
+                "SELECT cpu_percent, memory_mb FROM metrics ORDER BY id DESC LIMIT 200", conn
+            )
+
             # Save current metrics to SQLite first
             cursor = conn.cursor()
             cursor.execute(
                 "INSERT INTO metrics (pid, cpu_percent, memory_mb, anomaly_status) VALUES (?, ?, ?, ?)",
-                (os.getpid(), last_cpu, last_ram, "Normal")
+                (os.getpid(), last_cpu, last_ram, "Normal"),
             )
             conn.commit()
             current_row_id = cursor.lastrowid
@@ -194,38 +216,46 @@ def watchdog_worker():
             if len(df) >= 15:
                 # Dynamically train Isolation Forest
                 from sklearn.ensemble import IsolationForest
-                X = df[['cpu_percent', 'memory_mb']].copy()
-                
+
+                X = df[["cpu_percent", "memory_mb"]].copy()
+
                 # Append current data point to X to run predict
-                current_point = pd.DataFrame([[last_cpu, last_ram]], columns=['cpu_percent', 'memory_mb'])
+                current_point = pd.DataFrame(
+                    [[last_cpu, last_ram]], columns=["cpu_percent", "memory_mb"]
+                )
                 X = pd.concat([X, current_point], ignore_index=True)
-                
+
                 clf = IsolationForest(contamination=0.08, random_state=42)
                 clf.fit(X)
-                
+
                 # Predict latest row status (-1: anomaly, 1: normal)
                 pred = clf.predict(current_point)[0]
-                
+
                 if pred == -1:
-                    anomaly_status = "Anomalous"
+                    # Flagged by the Isolation Forest
                     latest_anomaly_score = 1.0
-                    
+
                     # Characterize anomaly type
-                    mean_cpu = df['cpu_percent'].mean()
-                    mean_ram = df['memory_mb'].mean()
-                    
+                    mean_cpu = df["cpu_percent"].mean()
+                    mean_ram = df["memory_mb"].mean()
+
                     if last_cpu > mean_cpu * 2.5:
                         system_health = "Anomalous (CPU Spike)"
                     elif last_ram > mean_ram * 1.5:
                         system_health = "Anomalous (Memory Leak)"
                     else:
                         system_health = "Anomalous (System Degradation)"
-                    
-                    logger.warning(f"Watchdog Anomaly Detected! CPU: {last_cpu}%, RAM: {last_ram}MB. Status: {system_health}")
-                    
+
+                    logger.warning(
+                        f"Watchdog Anomaly Detected! CPU: {last_cpu}%, RAM: {last_ram}MB. Status: {system_health}"
+                    )
+
                     # Update status in db
                     conn = get_metrics_db()
-                    conn.execute("UPDATE metrics SET anomaly_status = ? WHERE id = ?", (system_health, current_row_id))
+                    conn.execute(
+                        "UPDATE metrics SET anomaly_status = ? WHERE id = ?",
+                        (system_health, current_row_id),
+                    )
                     conn.commit()
                     conn.close()
 
@@ -242,92 +272,202 @@ def watchdog_worker():
             logger.error(f"Watchdog Worker Error: {e}")
         time.sleep(2)
 
+
 # Dynamic LLM RCA Report Generator
 def trigger_auto_rca():
     global is_generating_rca
     if is_generating_rca:
         return
-    
+
     # Run RCA generation in a separate thread to prevent blocking
     thread = threading.Thread(target=generate_rca_report_task, daemon=True)
     thread.start()
 
-def generate_rca_report_task():
-    global is_generating_rca
-    is_generating_rca = True
-    logger.info("AI SRE Agent: Starting Root Cause Analysis...")
+
+def fetch_recent_metrics(limit: int = 15) -> list[dict]:
+    conn = get_metrics_db()
     try:
-        api_key = os.getenv("GOOGLE_API_KEY")
-        if not api_key:
-            logger.error("RCA Generation aborted: GOOGLE_API_KEY environment variable is missing!")
-            is_generating_rca = False
-            return
-
-        # Fetch recent metrics
-        conn = get_metrics_db()
-        import pandas as pd
-        df = pd.read_sql_query("SELECT timestamp, cpu_percent, memory_mb, anomaly_status FROM metrics ORDER BY id DESC LIMIT 15", conn)
+        rows = conn.execute(
+            "SELECT timestamp, cpu_percent, memory_mb, anomaly_status FROM metrics "
+            "ORDER BY id DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    finally:
         conn.close()
-        
-        telemetry_markdown = df.to_markdown(index=False)
+    return [{"timestamp": r[0], "cpu": r[1], "ram": r[2], "status": r[3]} for r in rows][::-1]
 
-        # Dynamic langchain imports to avoid startup failure if libraries are missing
-        from langchain_google_genai import ChatGoogleGenerativeAI
-        from langchain_core.prompts import PromptTemplate
 
-        llm = ChatGoogleGenerativeAI(
-            model="gemini-2.5-flash",
-            temperature=0.2,
-            google_api_key=api_key
+def telemetry_table(rows: list[dict]) -> str:
+    lines = ["| Timestamp | CPU (%) | Memory (MB) | Watchdog status |", "|---|---|---|---|"]
+    for r in rows:
+        lines.append(f"| {r['timestamp']} | {r['cpu']:.1f} | {r['ram']:.1f} | {r['status']} |")
+    return "\n".join(lines)
+
+
+def build_template_report(rows: list[dict], generated_at: str, note: str = "") -> str:
+    """Deterministic incident report used when no Gemini API key is configured."""
+    if not rows:
+        return (
+            f"# Incident Report\n\nGenerated: {generated_at}\n\n"
+            "No telemetry has been recorded yet, so there is nothing to analyse."
         )
+    cpus = [r["cpu"] for r in rows]
+    rams = [r["ram"] for r in rows]
+    anomalies = [r for r in rows if "Anomalous" in (r["status"] or "")]
+    if anomalies:
+        kind = anomalies[-1]["status"]
+        first = anomalies[0]["timestamp"]
+        summary = (
+            f"The watchdog flagged {len(anomalies)} of the last {len(rows)} samples. "
+            f"The first flagged sample was at {first}; the latest classification is **{kind}**."
+        )
+    else:
+        kind = "No anomaly in window"
+        summary = f"None of the last {len(rows)} samples was flagged by the watchdog."
+    if "CPU" in kind:
+        cause = (
+            "A burst of CPU-bound work in the process (for example a busy loop or a hot code path)."
+        )
+        actions = [
+            "Profile the hot path",
+            "Move CPU-heavy work off the request thread",
+            "Add CPU alerts",
+        ]
+    elif "Memory" in kind:
+        cause = (
+            "Memory that is allocated and never released (resident memory grew and stayed high)."
+        )
+        actions = [
+            "Take a heap snapshot",
+            "Check caches and global lists for unbounded growth",
+            "Restart the process if memory keeps rising",
+        ]
+    elif "Degradation" in kind:
+        cause = "CPU and memory moved away from their baseline together."
+        actions = [
+            "Correlate with recent deploys and traffic",
+            "Check both CPU and memory profiles",
+        ]
+    else:
+        cause = "No cause identified: telemetry is within its normal range."
+        actions = ["Keep monitoring"]
+    parts = [
+        f"# Incident Report: {kind}",
+        "",
+        f"**Generated:** {generated_at}  ",
+        "**Generator:** built-in template (set `GOOGLE_API_KEY` for an AI-written analysis)",
+    ]
+    if note:
+        parts += ["", f"> {note}"]
+    parts += [
+        "",
+        "## Summary",
+        "",
+        summary,
+        "",
+        "## Telemetry statistics",
+        "",
+        f"- CPU: min {min(cpus):.1f} %, mean {sum(cpus) / len(cpus):.1f} %, max {max(cpus):.1f} %",
+        f"- Memory: min {min(rams):.1f} MB, mean {sum(rams) / len(rams):.1f} MB, max {max(rams):.1f} MB",
+        "",
+        "## Recent telemetry",
+        "",
+        telemetry_table(rows),
+        "",
+        "## Likely cause",
+        "",
+        cause,
+        "",
+        "## Recommended actions",
+        "",
+    ]
+    parts += [f"- {a}" for a in actions]
+    return "\n".join(parts) + "\n"
 
-        prompt_template = """
-You are an expert Site Reliability Engineer (SRE) and AI Agent.
+
+def generate_ai_report(api_key: str, rows: list[dict]) -> str:
+    """Ask Gemini (through LangChain) for an RCA report. Imported lazily."""
+    from langchain_core.prompts import PromptTemplate
+    from langchain_google_genai import ChatGoogleGenerativeAI
+
+    llm = ChatGoogleGenerativeAI(
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        temperature=0.2,
+        google_api_key=api_key,
+    )
+    prompt_template = """
+You are an expert Site Reliability Engineer (SRE).
 The system watchdog has detected an anomaly or database incident.
 
 Here is the telemetry data from the last few minutes before the incident:
 {telemetry_data}
 
-Please generate a highly professional Root Cause Analysis (RCA) report in Markdown format.
-Include:
+Write a Root Cause Analysis (RCA) report in Markdown with:
 1. Executive Summary
-2. Timeline of Anomaly (indicate when values started deviating)
-3. Suspected Root Cause (diagnose if it is CPU lockup, memory leak, or database corruption based on the data)
-4. Recommended Preventative Actions (SRE best practices)
-
-Make the report detailed, engaging, and professional.
+2. Timeline of Anomaly (when values started deviating)
+3. Suspected Root Cause (CPU lockup, memory leak or database corruption, based on the data)
+4. Recommended Preventative Actions
 """
-        prompt = PromptTemplate(input_variables=["telemetry_data"], template=prompt_template)
-        chain = prompt | llm
-        
-        response = chain.invoke({"telemetry_data": telemetry_markdown})
-        
-        # Save to file
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    prompt = PromptTemplate(input_variables=["telemetry_data"], template=prompt_template)
+    response = (prompt | llm).invoke({"telemetry_data": telemetry_table(rows)})
+    content = response.content
+    if isinstance(content, list):
+        content = "".join(c if isinstance(c, str) else c.get("text", "") for c in content)
+    return content
+
+
+def generate_rca_report_task() -> str:
+    """Generate a report (AI if a key is set, template otherwise) and save it. Returns the path."""
+    global is_generating_rca
+    is_generating_rca = True
+    logger.info("Starting Root Cause Analysis...")
+    try:
+        rows = fetch_recent_metrics(15)
+        generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        api_key = os.getenv("GOOGLE_API_KEY", "").strip()
+        content = None
+        note = ""
+        if api_key:
+            try:
+                content = generate_ai_report(api_key, rows)
+            except Exception as e:
+                logger.error(f"AI report failed, using template instead: {e}")
+                note = f"The AI report failed ({type(e).__name__}); this is the template fallback."
+        if not content:
+            content = build_template_report(rows, generated_at, note)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
         report_path = os.path.join(REPORTS_DIR, f"RCA_Report_{timestamp}.md")
-        
-        with open(report_path, "w") as f:
-            f.write(response.content)
-            
-        logger.info(f"AI SRE Agent: RCA report generated successfully: {report_path}")
+        with open(report_path, "w", encoding="utf-8") as f:
+            f.write(content)
+        logger.info(f"RCA report saved: {report_path}")
+        return report_path
     except Exception as e:
-        logger.error(f"AI SRE Agent Error: {e}")
+        logger.error(f"RCA generation error: {e}")
+        return ""
     finally:
         is_generating_rca = False
+
 
 # Lifespan / Startup Handler
 @app.on_event("startup")
 def startup_event():
+    # Verify (and if needed restore) the database before touching its schema:
+    # init_db() raises on a corrupted file, which would crash every restart.
+    verify_and_heal_database()
     init_db()
     init_metrics_db()
-    verify_and_heal_database()
 
-    # Start managed background workers
+    if not WORKERS_ENABLED:
+        logger.info("Background workers disabled (DEEPBELL_DISABLE_WORKERS).")
+        return
     threading.Thread(target=snapshot_manager_worker, daemon=True).start()
     threading.Thread(target=watchdog_worker, daemon=True).start()
     logger.info("All SRE Cockpit background threads initialized.")
 
+
 # --- COCKPIT UI ROUTES ---
+
 
 @app.get("/", response_class=HTMLResponse)
 async def read_dashboard(request: Request):
@@ -337,16 +477,21 @@ async def read_dashboard(request: Request):
         reports = glob.glob(os.path.join(REPORTS_DIR, "RCA_Report_*.md"))
         if reports:
             latest_file = max(reports, key=os.path.getmtime)
-            with open(latest_file, "r") as f:
+            with open(latest_file, encoding="utf-8") as f:
                 latest_report = f.read()
 
-    return templates.TemplateResponse("index.html", {
-        "request": request,
-        "report_content": latest_report,
-        "api_key_configured": bool(os.getenv("GOOGLE_API_KEY"))
-    })
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "report_content": latest_report,
+            "api_key_configured": bool(os.getenv("GOOGLE_API_KEY")),
+        },
+    )
+
 
 # --- TRANSACTION ENDPOINTS ---
+
 
 @app.post("/transaction")
 def create_transaction(amount: float):
@@ -364,12 +509,15 @@ def create_transaction(amount: float):
     finally:
         conn.close()
 
+
 @app.get("/transactions")
 def list_transactions():
     try:
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT id, amount, timestamp FROM transactions ORDER BY timestamp DESC LIMIT 10")
+        cursor.execute(
+            "SELECT id, amount, timestamp FROM transactions ORDER BY timestamp DESC LIMIT 10"
+        )
         rows = cursor.fetchall()
         conn.close()
         return [{"id": r[0], "amount": r[1], "timestamp": r[2]} for r in rows]
@@ -377,7 +525,9 @@ def list_transactions():
         logger.error(f"Failed to fetch transactions: {e}")
         return []
 
+
 # --- COCKPIT REST APIs ---
+
 
 @app.get("/api/status")
 def get_system_status():
@@ -388,58 +538,72 @@ def get_system_status():
         "cpu": last_cpu,
         "ram": last_ram,
         "is_generating_rca": is_generating_rca,
-        "api_key_configured": bool(os.getenv("GOOGLE_API_KEY"))
+        "api_key_configured": bool(os.getenv("GOOGLE_API_KEY")),
     }
+
 
 @app.get("/api/metrics")
 def get_metrics():
     """Fetch the latest 15 telemetry entries."""
     conn = get_metrics_db()
     cursor = conn.cursor()
-    cursor.execute("SELECT timestamp, cpu_percent, memory_mb, anomaly_status FROM metrics ORDER BY id DESC LIMIT 15")
+    cursor.execute(
+        "SELECT timestamp, cpu_percent, memory_mb, anomaly_status FROM metrics ORDER BY id DESC LIMIT 15"
+    )
     rows = cursor.fetchall()
     conn.close()
     return [{"timestamp": r[0], "cpu": r[1], "ram": r[2], "status": r[3]} for r in rows]
+
 
 @app.get("/api/backups")
 def get_backups():
     """List all available database snapshots."""
     backups = glob.glob(os.path.join(BACKUP_DIR, "app_*.db.bak"))
     backups.sort(key=os.path.getmtime, reverse=True)
-    
+
     backup_list = []
     for b in backups:
         stat = os.stat(b)
-        backup_list.append({
-            "filename": os.path.basename(b),
-            "size_kb": round(stat.st_size / 1024, 2),
-            "timestamp": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-        })
+        backup_list.append(
+            {
+                "filename": os.path.basename(b),
+                "size_kb": round(stat.st_size / 1024, 2),
+                "timestamp": datetime.fromtimestamp(stat.st_mtime).strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
     return backup_list
+
 
 @app.post("/api/rollback")
 def post_rollback(filename: str = Form(...)):
     """Manually restore the database to a selected snapshot."""
+    if not BACKUP_NAME_RE.match(filename):
+        raise HTTPException(status_code=400, detail="Invalid snapshot file name.")
     target_backup = os.path.join(BACKUP_DIR, filename)
     if not os.path.exists(target_backup):
         raise HTTPException(status_code=404, detail="Backup snapshot file not found.")
-    
+
     logger.info(f"Triggering manual database rollback to: {filename}")
     try:
         shutil.copy2(target_backup, DB_FILE)
-        return {"status": "success", "message": f"Database successfully rolled back to snapshot {filename}."}
+        return {
+            "status": "success",
+            "message": f"Database successfully rolled back to snapshot {filename}.",
+        }
     except Exception as e:
         logger.error(f"Manual rollback failed: {e}")
         raise HTTPException(status_code=500, detail=f"Rollback failed: {str(e)}")
+
 
 @app.post("/api/rca/generate")
 def post_generate_rca():
     """Manually trigger the AI agent to generate a Root Cause Analysis report."""
     if is_generating_rca:
         return {"status": "busy", "message": "AI Agent is already generating a report."}
-    
+
     trigger_auto_rca()
     return {"status": "started", "message": "Root Cause Analysis report generation triggered."}
+
 
 @app.post("/api/settings/apikey")
 def post_save_apikey(api_key: str = Form(...)):
@@ -447,14 +611,20 @@ def post_save_apikey(api_key: str = Form(...)):
     api_key = api_key.strip()
     if not api_key:
         raise HTTPException(status_code=400, detail="API Key cannot be empty.")
-    
+
     # Update current runtime environment
     os.environ["GOOGLE_API_KEY"] = api_key
-    
+
     # Save to root .env file
     try:
-        with open(ENV_FILE, "w") as f:
-            f.write(f"GOOGLE_API_KEY={api_key}\n")
+        # Keep any other settings already in the file.
+        lines = []
+        if os.path.exists(ENV_FILE):
+            with open(ENV_FILE, encoding="utf-8") as f:
+                lines = [ln for ln in f.read().splitlines() if not ln.startswith("GOOGLE_API_KEY=")]
+        lines.append(f"GOOGLE_API_KEY={api_key}")
+        with open(ENV_FILE, "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
 
         logger.info("Gemini API key successfully saved to configuration.")
         return {"status": "success", "message": "API key saved successfully."}
@@ -462,20 +632,28 @@ def post_save_apikey(api_key: str = Form(...)):
         logger.error(f"Failed to write API Key to file: {e}")
         raise HTTPException(status_code=500, detail="Failed to save API key to configuration.")
 
+
 # --- CHAOS INJECTION ENDPOINTS ---
+
 
 @app.get("/fault/memory_leak")
 def inject_memory_leak(size_mb: int = 50):
     """Simulates a memory leak by appending a large string to a global array."""
     logger.warning(f"FAULT INJECTED: Allocating {size_mb} MB of leaked memory.")
     _memory_leak_array.append("x" * (size_mb * 1024 * 1024))
-    return {"status": "fault_injected", "type": "memory_leak", "allocated_mb": size_mb, "total_leaked_blocks": len(_memory_leak_array)}
+    return {
+        "status": "fault_injected",
+        "type": "memory_leak",
+        "allocated_mb": size_mb,
+        "total_leaked_blocks": len(_memory_leak_array),
+    }
+
 
 @app.get("/fault/cpu_spike")
 def inject_cpu_spike(duration_sec: int = 5):
     """Simulates a CPU spike with a blocking busy loop."""
     logger.warning(f"FAULT INJECTED: CPU spike for {duration_sec} seconds.")
-    
+
     def busy_loop():
         end_time = time.time() + duration_sec
         while time.time() < end_time:
@@ -485,26 +663,33 @@ def inject_cpu_spike(duration_sec: int = 5):
     threading.Thread(target=busy_loop, daemon=True).start()
     return {"status": "fault_injected", "type": "cpu_spike", "duration": duration_sec}
 
+
 @app.get("/fault/fatal_crash")
 def inject_fatal_crash():
     """Simulates a fatal application crash by exiting the process."""
     logger.fatal("FAULT INJECTED: Fatal crash triggered. Shutting down process immediately.")
-    
+
     def kill_soon():
         time.sleep(1)
-        os._exit(1) # Immediate hard exit
+        os._exit(1)  # Immediate hard exit
 
     threading.Thread(target=kill_soon, daemon=True).start()
-    return {"status": "fault_injected", "type": "fatal_crash", "message": "Process will terminate in 1 second."}
+    return {
+        "status": "fault_injected",
+        "type": "fatal_crash",
+        "message": "Process will terminate in 1 second.",
+    }
+
 
 @app.get("/fault/corrupt_db")
 def inject_db_corruption():
     """Simulates database corruption by writing garbage to the SQLite file."""
     logger.error("FAULT INJECTED: Corrupting database file.")
     try:
-        # Write garbage
-        with open(DB_FILE, "a") as f:
-            f.write("GARBAGE DATA CORRUPTION" * 100)
+        # Overwrite the SQLite header. Appending bytes is not enough: SQLite
+        # ignores trailing data, so the file would still open normally.
+        with open(DB_FILE, "r+b") as f:
+            f.write(b"GARBAGE DATA CORRUPTION " * 5)
         logger.error("Database corrupted successfully.")
         return {"status": "fault_injected", "type": "corrupt_db"}
     except Exception as e:
