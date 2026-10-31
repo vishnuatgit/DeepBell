@@ -1,0 +1,20 @@
+# Render Blueprint for the public DeepBell demo.
+# Free plan: 0.1 CPU and 512 MB RAM; the service sleeps after 15 minutes without traffic and
+# its disk is ephemeral, so data resets on every restart (the app seeds itself on startup).
+services:
+  - type: web
+    name: deepbell
+    runtime: docker
+    plan: free
+    region: singapore
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass
+    envVars:
+      # Locks the demo down: no API-key endpoint, no crash fault, no .env loading.
+      - key: PUBLIC_DEMO
+        value: "1"
+      # Optional. Set it in the Render dashboard for Gemini-written reports, or leave it
+      # empty to use the built-in template reports.
+      - key: GOOGLE_API_KEY
+        sync: false

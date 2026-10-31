@@ -1,0 +1,22 @@
+# Keep secrets, local runtime data and development files out of the build context.
+.env
+.env.*
+!.env.example
+.git/
+.github/
+venv/
+.venv/
+data/
+backups/
+reports/
+**/__pycache__/
+**/*.pyc
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+tests/
+docs/
+.vscode/
+.idea/

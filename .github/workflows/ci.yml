@@ -30,3 +30,20 @@ jobs:
           cache: pip
       - run: pip install -r target_app/requirements.txt -r requirements-dev.txt
       - run: pytest --cov=target_app --cov-report=term-missing
+
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - run: docker build -t deepbell:ci .
+      - name: Smoke test the image in public demo mode
+        run: |
+          docker run -d --name deepbell -p 8000:8000 -e PUBLIC_DEMO=1 deepbell:ci
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8000/healthz && break; sleep 2; done
+          curl -fsS http://127.0.0.1:8000/healthz
+          curl -fsS http://127.0.0.1:8000/ > /dev/null
+          curl -fsS http://127.0.0.1:8000/transactions
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST http://127.0.0.1:8000/api/settings/apikey)
+          test "$code" = "403"
+      - if: always()
+        run: docker logs deepbell || true

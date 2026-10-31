@@ -5,10 +5,15 @@ import time
 
 
 def main():
+    # Bind address and port come from the environment (HOST, PORT); the defaults keep the
+    # server private to this machine. The app itself decides whether to read .env:
+    # it never does when PUBLIC_DEMO is set.
+    host = os.getenv("HOST", "127.0.0.1")
+    port = os.getenv("PORT", "8000")
     print("==========================================================")
     print("[SYSTEM] DeepBell AIOps SRE Cockpit Launcher")
     print("==========================================================")
-    print("Starting unified web service on http://127.0.0.1:8000")
+    print(f"Starting unified web service on http://{host}:{port}")
     print("This launcher auto-recovers and restarts the app if killed.")
     print("Press Ctrl+C to terminate.")
     print("----------------------------------------------------------")
@@ -26,9 +31,9 @@ def main():
                     "uvicorn",
                     "main:app",
                     "--host",
-                    "127.0.0.1",
+                    host,
                     "--port",
-                    "8000",
+                    port,
                 ],
                 cwd=app_dir,
             )

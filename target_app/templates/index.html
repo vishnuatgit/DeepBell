@@ -4,145 +4,208 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DeepBell SRE Cockpit</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🔔</text></svg>">
-    <link rel="stylesheet" href="/static/styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <meta name="description" content="DeepBell is a self-monitoring SRE lab: a FastAPI service that watches its own CPU and memory, flags anomalies with an Isolation Forest, writes incident reports and rolls its SQLite database back to snapshots. Inject faults in the Chaos Lab and watch it react.">
+    <meta name="author" content="Chandana Vishnu Jayanth">
+    <meta name="theme-color" content="#03050c">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="DeepBell">
+    <meta property="og:title" content="DeepBell SRE Cockpit">
+    <meta property="og:description" content="A self-monitoring SRE lab: anomaly detection on its own CPU and memory, incident reports, database snapshots and rollback, and a Chaos Lab to break it on purpose.">
+    <meta name="twitter:card" content="summary">
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/styles.css?v={{ static_version }}">
+    <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
+    <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
 </head>
 <body>
     <!-- Offline Reconnect Overlay -->
-    <div class="offline-overlay" id="offline-overlay">
+    <div class="offline-overlay" id="offline-overlay" role="alert">
         <div class="offline-content">
             <div class="offline-spinner"></div>
             <h2>Server Unreachable</h2>
-            <p>The SRE Cockpit has lost connection to the backend. This may be due to a simulated crash or server restart.</p>
+            <p>The cockpit lost its connection to the server. It may be restarting, for example after a simulated crash or a redeploy.</p>
             <p class="offline-sub" id="offline-status">Attempting to reconnect...</p>
         </div>
     </div>
 
-    <div class="glow-bg"></div>
-    <div class="glow-bg-2"></div>
+    <!-- Confirmation dialog -->
+    <div class="modal-overlay" id="confirm-modal" hidden>
+        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
+            <h2 id="confirm-title"></h2>
+            <p id="confirm-body"></p>
+            <div class="modal-actions">
+                <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
+                <button class="btn" id="confirm-ok">Confirm</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-stack" id="toasts" aria-live="polite"></div>
+
+    <div class="glow-layer" aria-hidden="true">
+        <div class="glow-bg"></div>
+        <div class="glow-bg-2"></div>
+    </div>
     <div class="dashboard-container">
-        
+
         <!-- Sidebar Navigation -->
         <aside class="sidebar">
             <div class="brand">
-                <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
                     <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/>
                 </svg>
                 <span class="brand-text">DeepBell <span class="badge-sre">SRE</span></span>
             </div>
-            <ul class="nav-links">
-                <li class="nav-item active" onclick="switchTab(this, 'overview')">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <nav class="nav-links" aria-label="Sections">
+                <button class="nav-item active" data-tab="overview" aria-current="page">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <rect x="3" y="3" width="7" height="9" rx="1" />
                         <rect x="14" y="3" width="7" height="5" rx="1" />
                         <rect x="14" y="12" width="7" height="9" rx="1" />
                         <rect x="3" y="16" width="7" height="5" rx="1" />
                     </svg>
                     Overview
-                </li>
-                <li class="nav-item" onclick="switchTab(this, 'metrics')">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                </button>
+                <button class="nav-item" data-tab="metrics">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M3 3v18h18" stroke-linecap="round" stroke-linejoin="round"/>
                         <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     Live Telemetry
-                </li>
-                <li class="nav-item" onclick="switchTab(this, 'chaos')">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                </button>
+                <button class="nav-item" data-tab="chaos">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
                     </svg>
                     Chaos Lab
-                </li>
-                <li class="nav-item" onclick="switchTab(this, 'backups')">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                </button>
+                <button class="nav-item" data-tab="backups">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <circle cx="12" cy="12" r="10"/>
                         <path d="M12 6v6l4 2"/>
                     </svg>
                     Time Machine
-                </li>
-                <li class="nav-item" onclick="switchTab(this, 'settings')">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                </button>
+                <button class="nav-item" data-tab="settings">
+                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
                         <circle cx="12" cy="12" r="3"/>
                         <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
                     </svg>
                     Settings
-                </li>
-            </ul>
+                </button>
+            </nav>
             <div class="sidebar-footer">
-                <div class="status-indicator-box">
-                    <div class="pulse-dot green" id="health-dot"></div>
-                    <span id="health-text">System Normal</span>
+                <div class="status-indicator-box" title="Watchdog health">
+                    <div class="pulse-dot yellow" id="health-dot"></div>
+                    <span id="health-text">Connecting...</span>
+                </div>
+                <button class="intro-link" onclick="showIntro()">How this demo works</button>
+                <div class="credits">
+                    <a href="{{ repo_url }}" target="_blank" rel="noopener">
+                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
+                        Source on GitHub
+                    </a>
+                    <a href="{{ author_url }}" target="_blank" rel="noopener">Built by Vishnu Jayanth</a>
                 </div>
             </div>
         </aside>
 
         <!-- Main Content Panel -->
         <main class="main-content">
-            
+
             <!-- Global Dashboard Header -->
             <header class="header">
                 <div class="header-title">
-                    <span class="subtitle">SRE Automation & Telemetry Analytics Console</span>
-                    <h1 id="page-title">SRE Cockpit Overview</h1>
+                    <span class="subtitle">SRE Automation &amp; Telemetry Analytics Console</span>
+                    <h1 id="page-title">Overview</h1>
                 </div>
                 <div class="status-cards">
                     <div class="stat-card">
                         <span class="stat-label">CPU Usage</span>
                         <div class="stat-val-box">
-                            <span class="stat-value" id="header-cpu">0.0</span><span class="stat-unit">%</span>
+                            <span class="stat-value" id="header-cpu">--</span><span class="stat-unit">%</span>
                         </div>
                         <div class="stat-bar"><div class="stat-progress" id="cpu-bar" style="width: 0%;"></div></div>
+                        <span class="stat-note" id="cpu-note">of one core</span>
                     </div>
                     <div class="stat-card">
-                        <span class="stat-label">RAM Allocation</span>
+                        <span class="stat-label">RAM (RSS)</span>
                         <div class="stat-val-box">
-                            <span class="stat-value" id="header-ram">0.0</span><span class="stat-unit">MB</span>
+                            <span class="stat-value" id="header-ram">--</span><span class="stat-unit">MB</span>
                         </div>
                         <div class="stat-bar"><div class="stat-progress" id="ram-bar" style="width: 0%;"></div></div>
+                        <span class="stat-note" id="ram-note">baseline --</span>
                     </div>
                 </div>
             </header>
 
             <!-- TABS CONTENT SECTIONS -->
-            
+
             <!-- 1. Overview Tab -->
             <section id="tab-overview" class="tab-content active">
                 <div class="grid-layout">
+                    <div class="col-12" id="intro-wrap">
+                        <div class="glass-panel intro-card">
+                            <button class="intro-close" onclick="dismissIntro()" aria-label="Dismiss">&times;</button>
+                            <h2>How this demo works</h2>
+                            <p class="intro-lead">DeepBell monitors <strong>its own server process</strong>: the CPU and memory on this page belong to the app you are looking at, sampled every 2 seconds.{% if public_demo %} This is a <strong>shared instance</strong>: everyone visiting sees the same telemetry and the same faults.{% endif %}</p>
+                            <ol class="intro-steps">
+                                <li><span class="step-num">1</span><div><strong>Watch</strong><p>The watchdog learns a baseline and flags samples that move well away from it.</p></div></li>
+                                <li><span class="step-num">2</span><div><strong>Inject a fault</strong><p>In the Chaos Lab, spike the CPU, leak memory or corrupt the database.</p></div></li>
+                                <li><span class="step-num">3</span><div><strong>Read the report</strong><p>Each incident gets a report{% if api_key_configured %} written by Gemini{% else %} from a built-in template{% endif %}, shown on this page.</p></div></li>
+                                <li><span class="step-num">4</span><div><strong>Roll back</strong><p>The Time Machine restores the database from a snapshot.</p></div></li>
+                            </ol>
+                            <div class="intro-actions">
+                                <button class="btn" onclick="switchTab('chaos')">Open the Chaos Lab</button>
+                                <button class="btn btn-secondary" onclick="dismissIntro()">Got it</button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="col-8">
                         <div class="glass-panel report-section">
                             <div class="panel-header">
-                                <h2>Latest Incident Post-Mortem Report</h2>
-                                <button class="btn btn-secondary" onclick="triggerManualRCA()" id="btn-rca-gen">
-                                    Trigger Documentation Generator
-                                </button>
+                                <div>
+                                    <h2>Latest Incident Report</h2>
+                                    <p class="panel-sub" id="report-meta"></p>
+                                </div>
+                                <button class="btn btn-secondary" onclick="triggerManualRCA()" id="btn-rca-gen">Generate report now</button>
                             </div>
                             {% if not api_key_configured %}
+                            {% if public_demo %}
+                            <p class="form-help">No Gemini key is configured on this server, so reports come from DeepBell's built-in template, built from the same telemetry.</p>
+                            {% else %}
                             <p class="form-help">AI reports need a Google Gemini API key (Settings tab or <code>GOOGLE_API_KEY</code>). Without one, DeepBell writes a built-in template report from the same telemetry.</p>
                             {% endif %}
+                            {% endif %}
                             <div class="report-card" id="report-container">
-                                <!-- Report content injected here -->
+                                {% if not report %}<p class="empty-state">No incident reports yet. Inject a fault in the Chaos Lab to create one.</p>{% endif %}
                             </div>
                         </div>
                     </div>
                     <div class="col-4">
                         <div class="glass-panel agent-status-card">
-                            <h3>Telemetry Watchdog Status</h3>
+                            <h3>Telemetry Watchdog</h3>
                             <div class="agent-activity-box">
                                 <div class="agent-avatar">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="avatar-svg">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="avatar-svg" aria-hidden="true">
                                         <rect x="3" y="11" width="18" height="10" rx="2" />
                                         <circle cx="12" cy="5" r="2"/>
                                         <path d="M12 7v4" stroke-linecap="round"/>
                                     </svg>
                                 </div>
                                 <div class="agent-details">
-                                    <h4 id="agent-state">Idle</h4>
-                                    <p id="agent-subtext">Monitoring server telemetry for deviations...</p>
+                                    <h4 id="agent-state">Connecting...</h4>
+                                    <p id="agent-subtext">Waiting for the first status update.</p>
                                 </div>
                             </div>
+                            <dl class="baseline-facts">
+                                <div><dt>Baseline</dt><dd id="baseline-source">--</dd></div>
+                                <div><dt>CPU alert above</dt><dd id="baseline-cpu">--</dd></div>
+                                <div><dt>Memory alert above</dt><dd id="baseline-ram">--</dd></div>
+                            </dl>
                             <div class="live-activity-feed">
                                 <div class="terminal-mockup">
                                     <div class="terminal-header">
@@ -151,13 +214,45 @@
                                             <span class="terminal-dot yellow-dot"></span>
                                             <span class="terminal-dot green-dot"></span>
                                         </div>
-                                        <div class="terminal-title">system_console</div>
+                                        <div class="terminal-title">server_events</div>
                                     </div>
-                                    <ul id="console-logs" class="console-logs">
-                                        <li class="log-info">[SYSTEM] Cockpit initialized. Background daemon active.</li>
-                                    </ul>
+                                    <ul id="console-logs" class="console-logs" aria-live="off"></ul>
                                 </div>
                             </div>
+                        </div>
+                    </div>
+                    <div class="col-12">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Transactions</h2>
+                                    <p class="panel-sub">Sample rows in this app's SQLite database. Corrupt it in the Chaos Lab, then restore it in the Time Machine.</p>
+                                </div>
+                                <form class="tx-actions" onsubmit="addTransaction(event)">
+                                    <label class="sr-only" for="tx-amount">Amount</label>
+                                    <input id="tx-amount" type="number" min="0.01" max="1000000" step="0.01" value="25.00" class="form-control form-control-sm" required>
+                                    <button class="btn" type="submit" id="btn-add-tx">Add transaction</button>
+                                </form>
+                            </div>
+                            <div class="db-alert" data-db-alert hidden>
+                                <span>The database is unreadable: <code data-db-error></code>. Restore a snapshot to recover.</span>
+                                <button class="btn btn-small" onclick="switchTab('backups')">Open Time Machine</button>
+                            </div>
+                            <div class="table-container">
+                                <table class="metrics-table tx-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Time</th>
+                                            <th class="num">Amount</th>
+                                            <th class="hide-sm">Transaction ID</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tx-body">
+                                        <tr><td colspan="3" class="table-empty">Loading transactions...</td></tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p class="panel-foot" id="snapshot-foot"></p>
                         </div>
                     </div>
                 </div>
@@ -169,10 +264,13 @@
                     <div class="col-12">
                         <div class="glass-panel chart-container-panel">
                             <div class="panel-header">
-                                <h2>Resource Telemetry Timeline</h2>
+                                <div>
+                                    <h2>Resource Telemetry Timeline</h2>
+                                    <p class="panel-sub">Last two minutes. <span class="key key-red"></span>red points are anomalous samples; <span class="key key-grey"></span>grey dashed lines are synthetic warm-up samples.</p>
+                                </div>
                             </div>
                             <div class="chart-wrapper">
-                                <canvas id="telemetryChart"></canvas>
+                                <canvas id="telemetryChart" aria-label="CPU and memory over the last two minutes" role="img"></canvas>
                             </div>
                         </div>
                     </div>
@@ -186,15 +284,15 @@
                                 <table class="metrics-table">
                                     <thead>
                                         <tr>
-                                            <th>Timestamp</th>
-                                            <th>CPU Usage</th>
-                                            <th>Memory RSS</th>
+                                            <th>Time</th>
+                                            <th class="num">CPU Usage</th>
+                                            <th class="num">Memory RSS</th>
                                             <th>Watchdog Evaluation</th>
                                         </tr>
                                     </thead>
                                     <tbody id="metrics-table-body">
                                         <tr>
-                                            <td colspan="4" style="text-align: center;">Waiting for telemetry stream...</td>
+                                            <td colspan="4" class="table-empty">Waiting for telemetry stream...</td>
                                         </tr>
                                     </tbody>
                                 </table>
@@ -206,52 +304,117 @@
 
             <!-- 3. Chaos Lab Tab -->
             <section id="tab-chaos" class="tab-content">
-                <div class="glass-panel">
-                    <div class="panel-header">
-                        <h2>Fault Injection Control Panel</h2>
-                        <p class="subtitle">Simulate real-world infrastructure failures to verify the auto-healing and incident analysis pipeline.</p>
+                <div class="grid-layout">
+                    <div class="col-7">
+                        <div class="glass-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Fault Injection Control Panel</h2>
+                                    <p class="panel-sub">Cause a real failure in this server and watch the pipeline react in Live Results.{% if public_demo %} Faults are shared by everyone on this demo, capped, and have a {{ config.cooldownSec }} s cooldown.{% endif %}</p>
+                                </div>
+                            </div>
+                            <div class="chaos-grid">
+                                <div class="chaos-card cpu-spike-card" id="card-cpu_spike">
+                                    <div class="chaos-icon text-orange">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <rect x="6" y="6" width="12" height="12" rx="2"/>
+                                            <rect x="9.5" y="9.5" width="5" height="5" rx="0.5"/>
+                                            <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" stroke-linecap="round"/>
+                                        </svg>
+                                    </div>
+                                    <h3>CPU Spike</h3>
+                                    <p>Runs a busy loop in a background thread for {{ config.maxSpikeSec }} seconds.</p>
+                                    <div class="chaos-foot">
+                                        <button class="btn btn-chaos" id="btn-cpu_spike" onclick="injectFault('cpu_spike')">Inject spike</button>
+                                        <span class="chaos-state" id="state-cpu_spike"></span>
+                                    </div>
+                                </div>
+                                <div class="chaos-card memory-leak-card" id="card-memory_leak">
+                                    <div class="chaos-icon text-red">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-11-7-11S5 10.7 5 15a7 7 0 0 0 7 7z"/>
+                                        </svg>
+                                    </div>
+                                    <h3>Memory Leak</h3>
+                                    <p>Allocates {{ config.leakStepMb }} MB per click and holds it until you release it (at most {{ config.leakLimitMb }} MB).</p>
+                                    <div class="leak-meter" aria-hidden="true"><div class="leak-fill" id="leak-fill"></div></div>
+                                    <span class="chaos-state" id="leak-held">0 of {{ config.leakLimitMb }} MB held</span>
+                                    <div class="chaos-foot">
+                                        <button class="btn btn-chaos" id="btn-memory_leak" onclick="injectFault('memory_leak')">Inject leak</button>
+                                        <button class="btn btn-secondary btn-small" id="btn-release" onclick="releaseMemory()">Release memory</button>
+                                        <span class="chaos-state" id="state-memory_leak"></span>
+                                    </div>
+                                </div>
+                                <div class="chaos-card db-corrupt-card" id="card-corrupt_db">
+                                    <div class="chaos-icon text-yellow">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                                        </svg>
+                                    </div>
+                                    <h3>Database Corruption</h3>
+                                    <p>Writes garbage over the SQLite file header, so every query fails until you roll back.</p>
+                                    <div class="chaos-foot">
+                                        <button class="btn btn-chaos" id="btn-corrupt_db" onclick="injectFault('corrupt_db')">Corrupt database</button>
+                                        <span class="chaos-state" id="state-corrupt_db"></span>
+                                    </div>
+                                </div>
+                                <div class="chaos-card crash-card{% if public_demo %} is-disabled{% endif %}" id="card-fatal_crash">
+                                    <div class="chaos-icon text-purple">
+                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                                            <rect x="3" y="3" width="18" height="18" rx="2" />
+                                            <path d="M9 9l6 6M15 9l-6 6" stroke-linecap="round"/>
+                                        </svg>
+                                    </div>
+                                    <h3>Fatal Server Crash</h3>
+                                    {% if public_demo %}
+                                    <p>Disabled on the public demo: it would take the site down for everyone. Run DeepBell locally to try it; the <code>run_all.py</code> supervisor restarts the process.</p>
+                                    <div class="chaos-foot">
+                                        <button class="btn btn-chaos" disabled>Disabled here</button>
+                                    </div>
+                                    {% else %}
+                                    <p>Hard-exits the process (<code>os._exit(1)</code>). The <code>run_all.py</code> supervisor restarts it.</p>
+                                    <div class="chaos-foot">
+                                        <button class="btn btn-chaos" id="btn-fatal_crash" onclick="injectFault('fatal_crash')">Crash server</button>
+                                    </div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="chaos-grid">
-                        <div class="chaos-card cpu-spike-card" onclick="injectFault('/fault/cpu_spike?duration_sec=10', 'CPU Stress Test')">
-                            <div class="chaos-icon text-orange">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
-                                </svg>
+                    <div class="col-5">
+                        <div class="glass-panel chart-container-panel results-panel">
+                            <div class="panel-header">
+                                <div>
+                                    <h2>Live Results</h2>
+                                    <p class="panel-sub"><span class="key key-red"></span>red points are samples the watchdog flagged.</p>
+                                </div>
+                                <span class="health-pill" id="chaos-health">--</span>
                             </div>
-                            <h3>CPU Spike Stress</h3>
-                            <p>Runs a blocking calculation loop in a background thread for 10 seconds.</p>
-                            <span class="chaos-btn">Inject Spike</span>
-                        </div>
-                        <div class="chaos-card memory-leak-card" onclick="injectFault('/fault/memory_leak?size_mb=60', 'Memory Leak Leakage')">
-                            <div class="chaos-icon text-red">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-11-7-11S5 10.7 5 15a7 7 0 0 0 7 7z"/>
-                                </svg>
+                            <div class="chart-wrapper chart-compact">
+                                <canvas id="chaosChart" aria-label="CPU and memory over the last two minutes" role="img"></canvas>
                             </div>
-                            <h3>Memory Allocation Leak</h3>
-                            <p>Leaks 60MB of unreleased array data blocks, triggering RAM anomalies.</p>
-                            <span class="chaos-btn">Inject Leak</span>
-                        </div>
-                        <div class="chaos-card db-corrupt-card" onclick="injectFault('/fault/corrupt_db', 'SQLite Database Corruption')">
-                            <div class="chaos-icon text-yellow">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                                </svg>
+                            <div class="db-alert" data-db-alert hidden>
+                                <span>The database is unreadable: <code data-db-error></code>.</span>
+                                <button class="btn btn-small" onclick="switchTab('backups')">Roll back in Time Machine</button>
                             </div>
-                            <h3>Database Corruption</h3>
-                            <p>Writes garbage bytes into the active SQLite database to trigger crash states.</p>
-                            <span class="chaos-btn">Corrupt Database</span>
-                        </div>
-                        <div class="chaos-card crash-card" onclick="injectFault('/fault/fatal_crash', 'Fatal Server Exit')">
-                            <div class="chaos-icon text-purple">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                                    <path d="M9 9l6 6M15 9l-6 6" stroke-linecap="round"/>
-                                </svg>
+                            <div class="terminal-mockup">
+                                <div class="terminal-header">
+                                    <div class="terminal-buttons">
+                                        <span class="terminal-dot red-dot"></span>
+                                        <span class="terminal-dot yellow-dot"></span>
+                                        <span class="terminal-dot green-dot"></span>
+                                    </div>
+                                    <div class="terminal-title">server_events</div>
+                                </div>
+                                <ul id="chaos-logs" class="console-logs console-short" aria-live="off"></ul>
                             </div>
-                            <h3>Fatal Server Crash</h3>
-                            <p>Hard-exits the process (<code>os._exit(1)</code>). The run_all.py supervisor restarts it.</p>
-                            <span class="chaos-btn">Crash Server</span>
+                            <div class="report-teaser">
+                                <div>
+                                    <span class="stat-label">Latest report</span>
+                                    <p id="chaos-report-title">--</p>
+                                </div>
+                                <button class="btn btn-secondary btn-small" onclick="switchTab('overview')">Read it</button>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -261,22 +424,27 @@
             <section id="tab-backups" class="tab-content">
                 <div class="glass-panel">
                     <div class="panel-header">
-                        <h2>Database Recovery Time Machine</h2>
-                        <p class="subtitle">Roll back the database state to any snapshot point. Snapshots are taken automatically every 30 seconds.</p>
+                        <div>
+                            <h2>Database Recovery Time Machine</h2>
+                            <p class="panel-sub">Every {{ config.snapshotIntervalSec }} seconds the database is copied to a snapshot if its contents changed; the newest {{ config.snapshotsKeep }} are kept. Restore one to roll the database back.</p>
+                        </div>
+                    </div>
+                    <div class="db-alert" data-db-alert hidden>
+                        <span>The database is unreadable: <code data-db-error></code>. Restore the newest snapshot below.</span>
                     </div>
                     <div class="table-container">
-                        <table class="metrics-table">
+                        <table class="metrics-table backups-table">
                             <thead>
                                 <tr>
-                                    <th>Snapshot Timestamp</th>
-                                    <th>File Name</th>
-                                    <th>Size</th>
+                                    <th>Snapshot taken</th>
+                                    <th class="num hide-sm">Size</th>
+                                    <th class="hide-sm">File name</th>
                                     <th>Action</th>
                                 </tr>
                             </thead>
                             <tbody id="backups-table-body">
                                 <tr>
-                                    <td colspan="4" style="text-align: center;">Scanning snapshots directory...</td>
+                                    <td colspan="4" class="table-empty">Scanning snapshots directory...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -291,448 +459,703 @@
                         <h2>Agent Settings</h2>
                     </div>
                     <div class="form-container">
+                        {% if public_demo %}
+                        <div class="form-group">
+                            <label>AI incident reports</label>
+                            <p class="setting-value">{% if api_key_configured %}On: reports are written by Google Gemini.{% else %}Off: reports come from the built-in template.{% endif %}</p>
+                            <p class="form-help">On this public demo only the server owner can set the Gemini API key, through the <code>GOOGLE_API_KEY</code> environment variable. Visitors cannot change it.</p>
+                        </div>
+                        {% else %}
                         <div class="form-group">
                             <label for="settings-api-key">Google Gemini API Key</label>
-                            <p class="form-help">Enter your API key from Google AI Studio. This enables the documentation engine to generate post-mortem incident reports.</p>
-                            <input type="password" id="settings-api-key" placeholder="{% if api_key_configured %}API Key Configured (••••••••) {% else %}Enter your Gemini API key{% endif %}" value="" class="form-control">
+                            <p class="form-help">Enter your API key from Google AI Studio to have Gemini write incident reports. It is used by this server process until it restarts and is never written to disk; to keep it, put <code>GOOGLE_API_KEY</code> in your <code>.env</code> file.</p>
+                            <input type="password" id="settings-api-key" autocomplete="off" placeholder="{% if api_key_configured %}API Key Configured (••••••••){% else %}Enter your Gemini API key{% endif %}" value="" class="form-control">
                         </div>
-                        <button class="btn btn-primary" onclick="saveApiKey()">Save Changes</button>
+                        <button class="btn btn-primary" onclick="saveApiKey()">Use this key</button>
                         <p id="settings-feedback" class="feedback-msg"></p>
+                        {% endif %}
                     </div>
                 </div>
             </section>
 
+            <footer class="page-footer">
+                <a href="{{ repo_url }}" target="_blank" rel="noopener">Source on GitHub</a>
+                <span aria-hidden="true">&middot;</span>
+                <a href="{{ author_url }}" target="_blank" rel="noopener">Built by Vishnu Jayanth</a>
+                <span aria-hidden="true">&middot;</span>
+                <button class="intro-link" onclick="showIntro()">How this demo works</button>
+            </footer>
         </main>
     </div>
 
-    <!-- Hidden Raw Markdown Data -->
-    <div id="raw-markdown" style="display: none;">{{ report_content }}</div>
-
     <script>
-        // Tab switching logic
-        function switchTab(element, tabId) {
-            document.querySelectorAll('.nav-item').forEach(item => item.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
-            
-            if (element) {
-                element.classList.add('active');
-            } else {
-                // Fallback highlighting based on tabId
-                const items = document.querySelectorAll('.nav-item');
-                items.forEach(item => {
-                    const text = item.innerText.toLowerCase();
-                    if ((tabId === 'metrics' && text.includes('telemetry')) ||
-                        (tabId === 'backups' && text.includes('time')) ||
-                        text.includes(tabId)) {
-                        item.classList.add('active');
-                    }
-                });
-            }
-
-            document.getElementById(`tab-${tabId}`).classList.add('active');
-            document.getElementById('page-title').innerText = `SRE Cockpit ${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`;
-
-            if (tabId === 'backups') {
-                loadBackups();
-            } else if (tabId === 'metrics' && telemetryChart) {
-                // Resize chart to prevent collapse inside hidden display layout
-                setTimeout(() => {
-                    telemetryChart.resize();
-                    telemetryChart.update();
-                }, 50);
-            }
-        }
-
-        // Add log to console panel
-        function addConsoleLog(message, type = 'info') {
-            const consoleBox = document.getElementById('console-logs');
-            const newLog = document.createElement('li');
-            const timeStr = new Date().toLocaleTimeString();
-            newLog.innerText = `[${timeStr}] ${message}`;
-            newLog.className = `log-${type}`;
-            consoleBox.insertBefore(newLog, consoleBox.firstChild);
-            
-            while (consoleBox.children.length > 30) {
-                consoleBox.removeChild(consoleBox.lastChild);
-            }
-        }
-
-        // Live status monitoring
-        let lastHealthState = "Healthy";
-        function checkStatus() {
-            fetch('/api/status')
-                .then(res => res.json())
-                .then(data => {
-                    // Update CPU and RAM
-                    document.getElementById('header-cpu').innerText = data.cpu.toFixed(1);
-                    document.getElementById('header-ram').innerText = data.ram.toFixed(1);
-                    
-                    const cpuBar = document.getElementById('cpu-bar');
-                    const ramBar = document.getElementById('ram-bar');
-                    cpuBar.style.width = `${Math.min(data.cpu, 100)}%`;
-                    ramBar.style.width = `${Math.min((data.ram / 500) * 100, 100)}%`;
-
-                    if (data.cpu > 80) cpuBar.style.backgroundColor = '#ef4444';
-                    else if (data.cpu > 50) cpuBar.style.backgroundColor = '#f97316';
-                    else cpuBar.style.backgroundColor = '#00f2fe';
-
-                    if (data.ram > 200) ramBar.style.backgroundColor = '#ef4444';
-                    else if (data.ram > 120) ramBar.style.backgroundColor = '#f97316';
-                    else ramBar.style.backgroundColor = '#00f2fe';
-
-                    // Update health dot & sidebar status
-                    const healthDot = document.getElementById('health-dot');
-                    const healthText = document.getElementById('health-text');
-                    
-                    healthDot.className = 'pulse-dot';
-                    if (data.status.includes('Anomalous')) {
-                        healthDot.classList.add('red');
-                        healthText.innerText = data.status;
-                        
-                        if (lastHealthState !== data.status) {
-                            addConsoleLog(`[ALERT] Watchdog flagged system anomaly: ${data.status}`, 'error');
-                            lastHealthState = data.status;
-                        }
-                    } else if (data.status.includes('Training')) {
-                        healthDot.classList.add('yellow');
-                        healthText.innerText = "Training Model...";
-                    } else {
-                        healthDot.classList.add('green');
-                        healthText.innerText = "System Normal";
-                        if (lastHealthState !== "Healthy") {
-                            addConsoleLog(`[SYSTEM] System health recovered to normal.`, 'info');
-                            lastHealthState = "Healthy";
-                        }
-                    }
-
-                    // Update Documentation Generator State
-                    const agentState = document.getElementById('agent-state');
-                    const agentSubtext = document.getElementById('agent-subtext');
-                    const rcaBtn = document.getElementById('btn-rca-gen');
-
-                    if (data.is_generating_rca) {
-                        agentState.innerText = "Analyzing Telemetry...";
-                        agentSubtext.innerText = "Generating incident documentation from telemetry metrics...";
-                        rcaBtn.disabled = true;
-                        rcaBtn.innerText = "Generating...";
-                    } else {
-                        agentState.innerText = data.status.includes('Anomalous') ? "Incident Document Ready" : "Idle";
-                        agentSubtext.innerText = data.status.includes('Anomalous') 
-                            ? "RCA Report completed and pushed to dashboard overview." 
-                            : "Monitoring metrics database...";
-                        rcaBtn.disabled = false;
-                        rcaBtn.innerText = "Trigger Documentation Generator";
-                    }
-                })
-                .catch(err => {
-                    const healthDot = document.getElementById('health-dot');
-                    const healthText = document.getElementById('health-text');
-                    healthDot.className = 'pulse-dot red';
-                    healthText.innerText = "Offline / Reconnecting";
-                    showOfflineOverlay();
-                });
-        }
-
-        // Initialize Live Telemetry Charts (Chart.js)
+        const CONFIG = {{ config | tojson }};
+        const INITIAL_REPORT = {{ report | tojson }};
+        const TAB_TITLES = {
+            overview: 'Overview',
+            metrics: 'Live Telemetry',
+            chaos: 'Chaos Lab',
+            backups: 'Time Machine',
+            settings: 'Settings',
+        };
+        const INTRO_KEY = 'deepbell.introDismissed';
+        let currentTab = 'overview';
+        let lastStatus = null;
+        let eventSeq = 0;
+        let shownReport = null;
+        let lastSnapshotName = null;
+        let lastDbOk = true;
+        let serverOffsetMs = 0;
         let telemetryChart = null;
-        function initChart() {
-            const ctx = document.getElementById('telemetryChart').getContext('2d');
-            telemetryChart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: [],
-                    datasets: [
-                        {
-                            label: 'CPU Usage (%)',
-                            borderColor: '#00f2fe',
-                            backgroundColor: 'rgba(0, 242, 254, 0.1)',
-                            borderWidth: 2,
-                            data: [],
-                            yAxisID: 'y-cpu',
-                            tension: 0.3
-                        },
-                        {
-                            label: 'RAM Allocation (MB)',
-                            borderColor: '#7000ff',
-                            backgroundColor: 'rgba(112, 0, 255, 0.1)',
-                            borderWidth: 2,
-                            data: [],
-                            yAxisID: 'y-ram',
-                            tension: 0.3
-                        }
-                    ]
+        let chaosChart = null;
+
+        // --- Helpers ---
+
+        function esc(value) {
+            return String(value ?? '').replace(/[&<>"']/g, c => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+            }[c]));
+        }
+
+        function parseTime(iso) {
+            const d = new Date(iso);
+            return isNaN(d) ? null : d;
+        }
+
+        // Timestamps arrive in UTC (ISO-8601); show them in the viewer's time zone.
+        function fmtTime(iso) {
+            const d = parseTime(iso);
+            return d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : iso;
+        }
+
+        function fmtDateTime(iso) {
+            const d = parseTime(iso);
+            return d ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : iso;
+        }
+
+        function ago(iso) {
+            const d = parseTime(iso);
+            if (!d) return '';
+            const s = Math.max(0, Math.round((Date.now() + serverOffsetMs - d.getTime()) / 1000));
+            if (s < 60) return `${s} s ago`;
+            if (s < 3600) return `${Math.floor(s / 60)} min ago`;
+            return `${Math.floor(s / 3600)} h ago`;
+        }
+
+        async function api(method, url, form) {
+            try {
+                const res = await fetch(url, { method, body: form });
+                let data = null;
+                try { data = await res.json(); } catch (e) { data = null; }
+                const detail = data && (typeof data.detail === 'string' ? data.detail : data.message);
+                return { ok: res.ok, status: res.status, data, detail: detail || `Request failed (${res.status}).` };
+            } catch (err) {
+                return { ok: false, status: 0, data: null, detail: 'Could not reach the server.' };
+            }
+        }
+
+        function showToast(message, type = 'info', timeout = 6000) {
+            const stack = document.getElementById('toasts');
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.textContent = message;
+            stack.appendChild(toast);
+            setTimeout(() => toast.classList.add('leaving'), timeout);
+            setTimeout(() => toast.remove(), timeout + 400);
+            while (stack.children.length > 4) stack.removeChild(stack.firstChild);
+        }
+
+        function confirmAction({ title, body, confirmLabel = 'Confirm', danger = false }) {
+            const modal = document.getElementById('confirm-modal');
+            const ok = document.getElementById('confirm-ok');
+            const cancel = document.getElementById('confirm-cancel');
+            document.getElementById('confirm-title').textContent = title;
+            document.getElementById('confirm-body').textContent = body;
+            ok.textContent = confirmLabel;
+            ok.classList.toggle('btn-danger', danger);
+            modal.hidden = false;
+            ok.focus();
+            return new Promise(resolve => {
+                const done = value => {
+                    modal.hidden = true;
+                    ok.onclick = cancel.onclick = modal.onclick = document.onkeydown = null;
+                    resolve(value);
+                };
+                ok.onclick = () => done(true);
+                cancel.onclick = () => done(false);
+                modal.onclick = e => { if (e.target === modal) done(false); };
+                document.onkeydown = e => { if (e.key === 'Escape') done(false); };
+            });
+        }
+
+        // --- Tabs ---
+
+        function switchTab(tabId) {
+            if (!TAB_TITLES[tabId]) tabId = 'overview';
+            currentTab = tabId;
+            document.querySelectorAll('.nav-item').forEach(item => {
+                const active = item.dataset.tab === tabId;
+                item.classList.toggle('active', active);
+                if (active) item.setAttribute('aria-current', 'page');
+                else item.removeAttribute('aria-current');
+            });
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabId}`));
+            document.getElementById('page-title').textContent = TAB_TITLES[tabId];
+            document.title = tabId === 'overview' ? 'DeepBell SRE Cockpit' : `${TAB_TITLES[tabId]} · DeepBell SRE Cockpit`;
+            try { history.replaceState(null, '', `#${tabId}`); } catch (e) { /* file:// or sandboxed */ }
+            document.querySelector('.main-content').scrollTop = 0;
+            window.scrollTo(0, 0);
+
+            if (tabId === 'backups') loadBackups();
+            if (tabId === 'overview') loadTransactions();
+            if (tabId === 'metrics' || tabId === 'chaos') {
+                loadTelemetry();
+                setTimeout(() => [telemetryChart, chaosChart].forEach(c => c && c.resize()), 50);
+            }
+        }
+
+        // --- Intro card ---
+
+        function dismissIntro() {
+            document.getElementById('intro-wrap').hidden = true;
+            try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) { /* storage unavailable */ }
+        }
+
+        function showIntro() {
+            switchTab('overview');
+            const wrap = document.getElementById('intro-wrap');
+            wrap.hidden = false;
+            try { localStorage.removeItem(INTRO_KEY); } catch (e) { /* storage unavailable */ }
+            wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+
+        // --- Server events console ---
+
+        function renderEvents(events) {
+            for (const id of ['console-logs', 'chaos-logs']) {
+                const box = document.getElementById(id);
+                for (const e of events) {
+                    const li = document.createElement('li');
+                    li.className = `log-${e.level}`;
+                    li.textContent = `[${fmtTime(e.time)}] ${e.message}`;
+                    box.insertBefore(li, box.firstChild);
+                }
+                while (box.children.length > 40) box.removeChild(box.lastChild);
+            }
+        }
+
+        // --- Status polling ---
+
+        function setBar(bar, pct, level) {
+            bar.style.width = `${Math.max(0, Math.min(pct, 100))}%`;
+            bar.dataset.level = level;
+        }
+
+        function renderStatus(data) {
+            lastStatus = data;
+            serverOffsetMs = (parseTime(data.server_time)?.getTime() ?? Date.now()) - Date.now();
+            const base = data.baseline;
+
+            // Header cards
+            document.getElementById('header-cpu').textContent = data.cpu.toFixed(1);
+            document.getElementById('header-ram').textContent = data.ram.toFixed(1);
+            setBar(document.getElementById('cpu-bar'), data.cpu, data.cpu > 80 ? 'high' : data.cpu > 50 ? 'warn' : 'ok');
+            document.getElementById('cpu-note').textContent = data.cpu_capacity < 1
+                ? `of the ${data.cpu_capacity} vCPU quota` : 'of one core';
+            const ramNote = document.getElementById('ram-note');
+            if (base) {
+                // Colours are relative to the learned baseline, not fixed thresholds.
+                const over = data.ram - base.ram;
+                const scale = base.ram + CONFIG.leakLimitMb + CONFIG.ramDeltaMb;
+                setBar(document.getElementById('ram-bar'), (data.ram / scale) * 100,
+                    over >= CONFIG.ramDeltaMb ? 'high' : over >= CONFIG.ramDeltaMb / 2 ? 'warn' : 'ok');
+                ramNote.textContent = `baseline ${base.ram.toFixed(0)} MB`;
+            } else {
+                setBar(document.getElementById('ram-bar'), 0, 'ok');
+                ramNote.textContent = 'learning baseline';
+            }
+
+            // Health indicators
+            const dot = document.getElementById('health-dot');
+            const text = document.getElementById('health-text');
+            const pill = document.getElementById('chaos-health');
+            const colour = { healthy: 'green', warming: 'yellow', anomalous: 'red', degraded: 'red' }[data.state] || 'yellow';
+            dot.className = `pulse-dot ${colour}`;
+            const shortLabel = s => (s.match(/\((.+)\)/) || [, s])[1];
+            const label = data.incidents.length ? `Incident: ${shortLabel(data.incidents[0].label)}`
+                : data.state === 'warming' ? 'Learning baseline' : 'System Normal';
+            const extra = data.incidents.length > 1 ? ` +${data.incidents.length - 1}` : '';
+            text.textContent = label + extra;
+            text.title = data.status;
+            pill.textContent = label + extra;
+            pill.dataset.state = colour;
+
+            // Watchdog card
+            const agentState = document.getElementById('agent-state');
+            const agentSub = document.getElementById('agent-subtext');
+            if (data.is_generating_rca) {
+                agentState.textContent = 'Writing incident report...';
+                agentSub.textContent = data.api_key_configured ? 'Gemini is analysing the recent telemetry.' : 'Building a template report from the recent telemetry.';
+            } else if (data.incidents.length) {
+                const inc = data.incidents[0];
+                agentState.textContent = `Incident: ${shortLabel(inc.label)}`;
+                agentSub.textContent = `${inc.detail} Since ${fmtTime(inc.opened_at)}.`;
+            } else if (data.state === 'warming') {
+                agentState.textContent = 'Learning baseline';
+                agentSub.textContent = 'Collecting samples before scoring them (about 30 s).';
+            } else {
+                agentState.textContent = 'Watching';
+                agentSub.textContent = 'Sampling CPU and memory every 2 s. No open incidents.';
+            }
+            const source = document.getElementById('baseline-source');
+            source.textContent = !base ? 'learning...'
+                : base.source === 'live' ? `${base.samples} live samples`
+                : `warm-up, live ${Math.min(base.live_samples, base.live_needed)}/${base.live_needed}`;
+            source.title = base ? `Fitted ${fmtDateTime(base.fitted_at)}` : '';
+            document.getElementById('baseline-cpu').textContent = base ? `${(base.cpu + CONFIG.cpuDeltaPct).toFixed(1)} %` : '--';
+            document.getElementById('baseline-ram').textContent = base ? `${(base.ram + CONFIG.ramDeltaMb).toFixed(0)} MB` : '--';
+
+            // Report button
+            const rcaBtn = document.getElementById('btn-rca-gen');
+            const rcaWait = data.faults.report.cooldown;
+            rcaBtn.disabled = data.is_generating_rca || rcaWait > 0;
+            rcaBtn.textContent = data.is_generating_rca ? 'Generating...' : rcaWait > 0 ? `Generate again in ${rcaWait} s` : 'Generate report now';
+
+            renderFaults(data.faults);
+            renderDatabase(data.database);
+
+            const snap = data.latest_snapshot;
+            document.getElementById('snapshot-foot').textContent = snap
+                ? `Last snapshot ${fmtTime(snap.timestamp)} (${ago(snap.timestamp)}). Snapshots are taken every ${CONFIG.snapshotIntervalSec} s when the data changed.`
+                : 'No snapshot yet.';
+            if (snap?.filename !== lastSnapshotName) {
+                lastSnapshotName = snap?.filename ?? null;
+                if (currentTab === 'backups') loadBackups();
+            }
+            if (data.latest_report !== (shownReport?.filename ?? null)) loadReport();
+        }
+
+        function renderFaults(f) {
+            const cooldown = (name, wait, idle) => {
+                const btn = document.getElementById(`btn-${name}`);
+                const state = document.getElementById(`state-${name}`);
+                if (!btn) return;
+                btn.disabled = wait > 0 || !!idle.disabled;
+                btn.textContent = wait > 0 ? `Cooling down · ${wait} s` : idle.label;
+                if (state) state.textContent = wait > 0 ? '' : (idle.note || '');
+            };
+            cooldown('cpu_spike', f.cpu_spike.cooldown, { label: 'Inject spike' });
+            const leak = f.memory_leak;
+            const full = leak.held_mb + leak.step_mb > leak.limit_mb;
+            cooldown('memory_leak', leak.cooldown, {
+                label: full ? 'Limit reached' : `Inject ${leak.step_mb} MB leak`, disabled: full,
+                note: full ? 'Release memory first' : '',
+            });
+            document.getElementById('leak-fill').style.width = `${(leak.held_mb / leak.limit_mb) * 100}%`;
+            document.getElementById('leak-held').textContent = `${leak.held_mb} of ${leak.limit_mb} MB held`;
+            document.getElementById('btn-release').disabled = leak.held_mb === 0;
+            cooldown('corrupt_db', f.corrupt_db.cooldown, { label: 'Corrupt database' });
+        }
+
+        function renderDatabase(db) {
+            document.querySelectorAll('[data-db-alert]').forEach(el => { el.hidden = db.ok; });
+            document.querySelectorAll('[data-db-error]').forEach(el => { el.textContent = db.error || ''; });
+            document.getElementById('btn-add-tx').disabled = !db.ok;
+            if (db.ok !== lastDbOk) {
+                lastDbOk = db.ok;
+                loadTransactions();
+            }
+        }
+
+        async function pollStatus() {
+            let data;
+            try {
+                const res = await fetch(`/api/status?events_after=${eventSeq}`);
+                if (!res.ok) throw new Error(res.status);
+                data = await res.json();
+            } catch (err) {
+                const dot = document.getElementById('health-dot');
+                dot.className = 'pulse-dot red';
+                document.getElementById('health-text').textContent = 'Offline / Reconnecting';
+                showOfflineOverlay();
+                return;
+            }
+            if (data.event_seq < eventSeq) {
+                // The server restarted and its event counter with it.
+                eventSeq = 0;
+                return pollStatus();
+            }
+            eventSeq = data.event_seq;
+            renderEvents(data.events);
+            renderStatus(data);
+        }
+
+        // --- Charts ---
+
+        const RED = '#ef4444';
+        const GREY = '#64748b';
+        const isAnomalous = (s, word = '') => (s || '').startsWith('Anomalous') && s.includes(word);
+        const isSynthetic = s => (s || '').startsWith('Warm-up');
+
+        function makeChart(canvasId) {
+            if (typeof Chart === 'undefined') return null;
+            const statusAt = (ctx, i) => (ctx.chart.$statuses || [])[i];
+            const xTicks = canvasId === 'chaosChart' ? 3 : window.innerWidth < 700 ? 4 : 8;
+            const dataset = (label, colour, axis, kind) => ({
+                label,
+                data: [],
+                yAxisID: axis,
+                borderColor: colour,
+                backgroundColor: colour,
+                borderWidth: 2,
+                tension: 0.3,
+                pointRadius: ctx => isAnomalous(statusAt(ctx, ctx.dataIndex), kind) ? 4 : 0,
+                pointHoverRadius: 5,
+                pointBackgroundColor: ctx => isAnomalous(statusAt(ctx, ctx.dataIndex), kind) ? RED : colour,
+                pointBorderColor: ctx => isAnomalous(statusAt(ctx, ctx.dataIndex), kind) ? RED : colour,
+                segment: {
+                    borderColor: ctx => isSynthetic(statusAt(ctx, ctx.p1DataIndex)) ? GREY : undefined,
+                    borderDash: ctx => isSynthetic(statusAt(ctx, ctx.p1DataIndex)) ? [4, 4] : undefined,
                 },
+            });
+            return new Chart(document.getElementById(canvasId), {
+                type: 'line',
+                data: { labels: [], datasets: [dataset('CPU (%)', '#00f2fe', 'y-cpu', 'CPU'), dataset('RAM (MB)', '#a855f7', 'y-ram', 'Memory')] },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
+                    animation: false,
+                    interaction: { mode: 'index', intersect: false },
                     scales: {
                         x: {
                             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8', font: { family: 'Plus Jakarta Sans' } }
+                            ticks: { color: '#94a3b8', maxTicksLimit: xTicks, maxRotation: 0, autoSkipPadding: 12, font: { family: 'Plus Jakarta Sans' } }
                         },
                         'y-cpu': {
-                            type: 'linear',
-                            position: 'left',
-                            min: 0,
-                            max: 100,
+                            type: 'linear', position: 'left', min: 0, suggestedMax: 100,
                             grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#00f2fe' }
+                            ticks: { color: '#00f2fe', maxTicksLimit: 6 }
                         },
                         'y-ram': {
-                            type: 'linear',
-                            position: 'right',
-                            min: 0,
+                            type: 'linear', position: 'right', grace: '15%',
                             grid: { drawOnChartArea: false },
-                            ticks: { color: '#c084fc' }
+                            ticks: { color: '#c084fc', maxTicksLimit: 6 }
                         }
                     },
                     plugins: {
-                        legend: {
-                            labels: { color: '#f8fafc', font: { family: 'Plus Jakarta Sans', weight: 'bold' } }
-                        }
+                        legend: { labels: { color: '#f8fafc', boxWidth: 14, font: { family: 'Plus Jakarta Sans', weight: 'bold' } } },
+                        tooltip: { callbacks: { footer: items => items.length ? statusAt(items[0], items[0].dataIndex) : '' } }
                     }
                 }
             });
         }
 
-        // Live telemetry polling
-        function loadTelemetry() {
-            fetch('/api/metrics')
-                .then(res => res.json())
-                .then(data => {
-                    const tbody = document.getElementById('metrics-table-body');
-                    tbody.innerHTML = '';
-                    
-                    if (data.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No metrics database records found yet.</td></tr>';
-                        return;
-                    }
-
-                    // Reverse data to show chronological order on the chart (left to right)
-                    const chartData = [...data].reverse();
-                    const labels = chartData.map(m => m.timestamp.split(' ')[1]);
-                    const cpuData = chartData.map(m => m.cpu);
-                    const ramData = chartData.map(m => m.ram);
-
-                    if (telemetryChart) {
-                        telemetryChart.data.labels = labels;
-                        telemetryChart.data.datasets[0].data = cpuData;
-                        telemetryChart.data.datasets[1].data = ramData;
-                        telemetryChart.update('none'); // Update without animation for performance
-                    }
-
-                    // Render table (newest first)
-                    data.forEach(m => {
-                        const tr = document.createElement('tr');
-                        const isAnomalous = m.status.includes('Anomalous');
-                        
-                        tr.innerHTML = `
-                            <td>${m.timestamp}</td>
-                            <td>${m.cpu.toFixed(1)}%</td>
-                            <td>${m.ram.toFixed(1)} MB</td>
-                            <td><span class="table-badge ${isAnomalous ? 'red' : 'green'}">${m.status}</span></td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                });
+        function updateChart(chart, rows) {
+            if (!chart) return;
+            chart.$statuses = rows.map(m => m.status);
+            chart.data.labels = rows.map(m => fmtTime(m.timestamp));
+            chart.data.datasets[0].data = rows.map(m => m.cpu);
+            chart.data.datasets[1].data = rows.map(m => m.ram);
+            chart.update('none');
         }
 
-        // Time Machine Load backups
-        function loadBackups() {
-            fetch('/api/backups')
-                .then(res => res.json())
-                .then(data => {
-                    const tbody = document.getElementById('backups-table-body');
-                    tbody.innerHTML = '';
-                    
-                    if (data.length === 0) {
-                        tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;">No backups found.</td></tr>';
-                        return;
-                    }
-
-                    data.forEach(b => {
-                        const tr = document.createElement('tr');
-                        tr.innerHTML = `
-                            <td>${b.timestamp}</td>
-                            <td>${b.filename}</td>
-                            <td>${b.size_kb} KB</td>
-                            <td>
-                                <button class="btn btn-small" onclick="rollbackToBackup('${b.filename}')">
-                                    Restore DB
-                                </button>
-                            </td>
-                        `;
-                        tbody.appendChild(tr);
-                    });
-                });
+        function badgeClass(status) {
+            if (isAnomalous(status)) return 'red';
+            if (status === 'Normal') return 'green';
+            return 'grey';
         }
 
-        // Action: Rollback database to a snapshot
-        function rollbackToBackup(filename) {
-            if (!confirm(`Are you sure you want to roll back the database to the snapshot: ${filename}?`)) {
+        async function loadTelemetry() {
+            const r = await api('GET', '/api/metrics?limit=60');
+            if (!r.ok || !Array.isArray(r.data)) return;
+            const data = r.data;
+            const chartRows = [...data].reverse(); // oldest first, left to right
+            updateChart(telemetryChart, chartRows);
+            updateChart(chaosChart, chartRows);
+
+            const tbody = document.getElementById('metrics-table-body');
+            if (data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="table-empty">No telemetry recorded yet.</td></tr>';
                 return;
             }
-            
-            const formData = new FormData();
-            formData.append("filename", filename);
+            tbody.innerHTML = data.slice(0, 15).map(m => `
+                <tr>
+                    <td>${esc(fmtTime(m.timestamp))}</td>
+                    <td class="num">${m.cpu.toFixed(1)}%</td>
+                    <td class="num">${m.ram.toFixed(1)} MB</td>
+                    <td><span class="table-badge ${badgeClass(m.status)}">${esc(m.status)}</span></td>
+                </tr>`).join('');
+        }
 
-            addConsoleLog(`[TIME MACHINE] Initiating manual restoration of backup: ${filename}...`, 'warn');
-            fetch('/api/rollback', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    addConsoleLog(`[TIME MACHINE] Database restored successfully to: ${filename}`, 'green');
-                    alert(data.message);
-                    loadBackups();
-                } else {
-                    addConsoleLog(`[ERROR] Rollback failed: ${data.detail || data.message}`, 'error');
-                    alert("Restoration failed: " + (data.detail || data.message));
-                }
-            })
-            .catch(err => {
-                addConsoleLog(`[ERROR] Connection error during rollback.`, 'error');
-                alert("Database rollback request failed.");
+        // --- Incident report ---
+
+        // Replace ISO-8601 UTC timestamps in rendered text with the viewer's local time.
+        function localizeTimes(root) {
+            const pattern = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b/g;
+            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+            const nodes = [];
+            while (walker.nextNode()) nodes.push(walker.currentNode);
+            for (const node of nodes) {
+                if (pattern.test(node.nodeValue)) node.nodeValue = node.nodeValue.replace(pattern, fmtDateTime);
+                pattern.lastIndex = 0;
+            }
+        }
+
+        function reportTitle(report) {
+            const line = (report.content.match(/^#\s+(.+)$/m) || [])[1];
+            return (line || report.filename).replace(/^Incident Report:\s*/, '');
+        }
+
+        function renderReport(report) {
+            shownReport = report;
+            const box = document.getElementById('report-container');
+            const meta = document.getElementById('report-meta');
+            const teaser = document.getElementById('chaos-report-title');
+            if (!report) {
+                box.innerHTML = '<p class="empty-state">No incident reports yet. Inject a fault in the Chaos Lab to create one.</p>';
+                meta.textContent = '';
+                teaser.textContent = 'None yet.';
+                return;
+            }
+            if (window.marked) {
+                box.classList.remove('raw');
+                box.innerHTML = marked.parse(report.content);
+            } else {
+                box.classList.add('raw');
+                box.textContent = report.content;
+            }
+            localizeTimes(box);
+            meta.textContent = report.generated_at ? `Written ${fmtDateTime(report.generated_at)} (${ago(report.generated_at)})` : report.filename;
+            teaser.textContent = `${reportTitle(report)} · ${report.generated_at ? fmtTime(report.generated_at) : ''}`;
+        }
+
+        async function loadReport() {
+            const r = await api('GET', '/api/reports/latest');
+            if (r.status === 404) return renderReport(null);
+            if (!r.ok) return;
+            const isNew = shownReport && r.data.filename !== shownReport.filename;
+            renderReport(r.data);
+            if (isNew) showToast(`New incident report: ${reportTitle(r.data)}`, 'success');
+        }
+
+        async function triggerManualRCA() {
+            const r = await api('POST', '/api/rca/generate');
+            if (r.ok) showToast(r.data.status === 'busy' ? r.data.message : 'Writing a report from the latest telemetry...', 'info');
+            else showToast(r.detail, r.status === 429 ? 'info' : 'error');
+            pollStatus();
+        }
+
+        // --- Transactions ---
+
+        async function loadTransactions() {
+            const tbody = document.getElementById('tx-body');
+            const r = await api('GET', '/transactions');
+            if (!r.ok) {
+                tbody.innerHTML = `<tr><td colspan="3" class="table-error">${esc(r.detail)}</td></tr>`;
+                return;
+            }
+            if (!r.data.length) {
+                tbody.innerHTML = '<tr><td colspan="3" class="table-empty">No transactions. Add one above.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = r.data.map(t => `
+                <tr>
+                    <td>${esc(fmtDateTime(t.timestamp))}</td>
+                    <td class="num">${Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                    <td class="mono hide-sm" title="${esc(t.id)}">${esc(String(t.id).slice(0, 8))}</td>
+                </tr>`).join('');
+        }
+
+        async function addTransaction(event) {
+            event.preventDefault();
+            const input = document.getElementById('tx-amount');
+            const r = await api('POST', `/transaction?amount=${encodeURIComponent(input.value)}`);
+            if (r.ok) {
+                showToast(`Transaction of ${r.data.amount.toFixed(2)} added. The next snapshot will include it.`, 'success');
+                input.value = (5 + Math.random() * 495).toFixed(2);
+            } else {
+                showToast(r.detail, 'error');
+            }
+            loadTransactions();
+        }
+
+        // --- Time Machine ---
+
+        async function loadBackups() {
+            const tbody = document.getElementById('backups-table-body');
+            const r = await api('GET', '/api/backups');
+            if (!r.ok) return;
+            if (r.data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="table-empty">No snapshots yet. The first one is taken when the app starts.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = r.data.map((b, i) => `
+                <tr>
+                    <td>${esc(fmtDateTime(b.timestamp))}<span class="cell-sub">${esc(ago(b.timestamp))}${i === 0 ? ' · newest' : ''}</span></td>
+                    <td class="num hide-sm">${b.size_kb} KB</td>
+                    <td class="mono hide-sm">${esc(b.filename)}</td>
+                    <td><button class="btn btn-small" data-snapshot="${esc(b.filename)}" data-taken="${esc(b.timestamp)}">Restore</button></td>
+                </tr>`).join('');
+            tbody.querySelectorAll('button[data-snapshot]').forEach(btn => {
+                btn.addEventListener('click', () => rollbackToBackup(btn.dataset.snapshot, btn.dataset.taken));
             });
         }
 
-        // Action: Trigger LLM RCA manually
-        function triggerManualRCA() {
-            addConsoleLog("[SYSTEM] Manual incident report synthesis requested...", 'warn');
-            fetch('/api/rca/generate', { method: 'POST' })
-                .then(res => res.json())
-                .then(data => {
-                    addConsoleLog(`[SYSTEM] ${data.message}`, 'info');
-                    setTimeout(reloadRCAReport, 6000);
-                });
+        async function rollbackToBackup(filename, taken) {
+            const ok = await confirmAction({
+                title: 'Roll back the database?',
+                body: `The database will be restored to the snapshot taken at ${fmtDateTime(taken)}. Transactions added after that are lost.`
+                    + (CONFIG.publicDemo ? ' This is a shared demo, so everyone sees the change.' : ''),
+                confirmLabel: 'Restore snapshot',
+            });
+            if (!ok) return;
+            const form = new FormData();
+            form.append('filename', filename);
+            const r = await api('POST', '/api/rollback', form);
+            if (r.ok) showToast(`Database restored to the snapshot from ${fmtTime(taken)}.`, 'success');
+            else showToast(`Rollback failed: ${r.detail}`, 'error');
+            loadBackups();
+            loadTransactions();
+            pollStatus();
         }
 
-        function reloadRCAReport() {
-            fetch('/')
-                .then(res => res.text())
-                .then(html => {
-                    const parser = new DOMParser();
-                    const doc = parser.parseFromString(html, 'text/html');
-                    const rawElem = doc.getElementById('raw-markdown');
-                    if (!rawElem) return;
-                    const newRaw = rawElem.innerText;
-                    
-                    const reportContainer = document.getElementById('report-container');
-                    if (newRaw.includes('No RCA reports generated yet')) {
-                        reportContainer.innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">${newRaw}</p>`;
-                    } else {
-                        reportContainer.innerHTML = marked.parse(newRaw);
-                    }
-                    addConsoleLog("[SYSTEM] Report view refreshed.", 'green');
-                });
+        // --- Chaos Lab ---
+
+        const SHARED_NOTE = CONFIG.publicDemo ? ' Everyone viewing this demo will see it.' : '';
+        const FAULTS = {
+            cpu_spike: {
+                url: () => `/fault/cpu_spike?duration_sec=${CONFIG.maxSpikeSec}`,
+                title: 'Inject a CPU spike?',
+                body: () => `A busy loop will run on this server for ${CONFIG.maxSpikeSec} seconds.${SHARED_NOTE}`,
+                confirm: 'Inject spike',
+                done: 'CPU spike injected. Watch the chart: the watchdog should open an incident within a few seconds.',
+            },
+            memory_leak: {
+                url: () => `/fault/memory_leak?size_mb=${CONFIG.leakStepMb}`,
+                title: 'Leak memory?',
+                body: () => `The server will allocate ${CONFIG.leakStepMb} MB and hold it until someone releases it. The incident stays open while the memory is held.${SHARED_NOTE}`,
+                confirm: 'Leak memory',
+                done: 'Memory leaked. The incident stays open until you release it.',
+            },
+            corrupt_db: {
+                url: () => '/fault/corrupt_db',
+                title: 'Corrupt the database?',
+                body: () => `Garbage will be written over the SQLite file header. Transactions stop working until the database is rolled back in the Time Machine.${SHARED_NOTE}`,
+                confirm: 'Corrupt database',
+                done: 'Database corrupted. Roll it back in the Time Machine to recover.',
+            },
+            fatal_crash: {
+                url: () => '/fault/fatal_crash',
+                title: 'Crash the server?',
+                body: () => 'The process exits immediately. If it runs under run_all.py, the supervisor restarts it after 2 seconds.',
+                confirm: 'Crash server',
+                done: 'Server is terminating. The dashboard will reconnect when it is back.',
+            },
+        };
+
+        async function injectFault(kind) {
+            const f = FAULTS[kind];
+            const ok = await confirmAction({ title: f.title, body: f.body(), confirmLabel: f.confirm, danger: true });
+            if (!ok) return;
+            const r = await api('POST', f.url());
+            if (r.ok) showToast(f.done, 'warn', 8000);
+            else showToast(r.detail, r.status === 429 || r.status === 409 ? 'info' : 'error');
+            pollStatus();
+            loadTelemetry();
         }
 
-        // Action: Inject chaos fault
-        function injectFault(url, name) {
-            addConsoleLog(`[CHAOS LAB] Triggering injection of: ${name}...`, 'warn');
-            fetch(url)
-                .then(res => res.json())
-                .then(data => {
-                    addConsoleLog(`[CHAOS LAB] Injection acknowledged: ${JSON.stringify(data)}`, 'info');
-                    if (url.includes('fatal_crash')) {
-                        addConsoleLog("[CHAOS LAB] Server terminating. Dashboard will temporarily disconnect and reconnect.", 'error');
-                    }
-                })
-                .catch(err => {
-                    addConsoleLog(`[ERROR] Failed to contact server during chaos injection.`, 'error');
-                });
+        async function releaseMemory() {
+            const r = await api('POST', '/fault/memory_release');
+            if (r.ok) showToast(`Released ${r.data.released_mb} MB. The incident closes once memory is back near the baseline.`, 'success');
+            else showToast(r.detail, 'error');
+            pollStatus();
         }
 
-        // Action: Settings API key save
-        function saveApiKey() {
-            const key = document.getElementById('settings-api-key').value;
+        // --- Settings (local runs only) ---
+
+        async function saveApiKey() {
+            const input = document.getElementById('settings-api-key');
             const feedback = document.getElementById('settings-feedback');
-            
-            if (!key.trim()) {
-                feedback.innerText = "Key cannot be empty.";
-                feedback.className = "feedback-msg red";
+            if (!input.value.trim()) {
+                feedback.textContent = 'Key cannot be empty.';
+                feedback.className = 'feedback-msg red';
                 return;
             }
-
-            const formData = new FormData();
-            formData.append("api_key", key);
-
-            feedback.innerText = "Saving API key...";
-            feedback.className = "feedback-msg";
-
-            fetch('/api/settings/apikey', {
-                method: 'POST',
-                body: formData
-            })
-            .then(res => res.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    feedback.innerText = "Settings saved successfully.";
-                    feedback.className = "feedback-msg green";
-                    addConsoleLog("[SETTINGS] API Key configuration updated.", 'green');
-                } else {
-                    feedback.innerText = data.detail || "Failed to save key.";
-                    feedback.className = "feedback-msg red";
-                }
-            })
-            .catch(err => {
-                feedback.innerText = "Error contacting server.";
-                feedback.className = "feedback-msg red";
-            });
+            const form = new FormData();
+            form.append('api_key', input.value);
+            feedback.textContent = 'Saving API key...';
+            feedback.className = 'feedback-msg';
+            const r = await api('POST', '/api/settings/apikey', form);
+            feedback.textContent = r.ok ? r.data.message : r.detail;
+            feedback.className = `feedback-msg ${r.ok ? 'green' : 'red'}`;
+            if (r.ok) input.value = '';
         }
 
-        // Offline overlay management
+        // --- Offline overlay ---
+
         let isOffline = false;
-        let reconnectInterval = null;
 
         function showOfflineOverlay() {
             if (isOffline) return;
             isOffline = true;
             document.getElementById('offline-overlay').classList.add('active');
-            addConsoleLog('[SYSTEM] Server connection lost. Reconnecting...', 'error');
-
             let attempts = 0;
-            reconnectInterval = setInterval(() => {
+            const timer = setInterval(async () => {
                 attempts++;
-                document.getElementById('offline-status').innerText = `Reconnect attempt ${attempts}...`;
-                fetch('/api/status')
-                    .then(res => res.json())
-                    .then(() => {
-                        clearInterval(reconnectInterval);
-                        reconnectInterval = null;
-                        isOffline = false;
-                        document.getElementById('offline-overlay').classList.remove('active');
-                        addConsoleLog('[SYSTEM] Connection restored. Dashboard re-synced.', 'green');
-                        checkStatus();
-                        loadTelemetry();
-                        reloadRCAReport();
-                    })
-                    .catch(() => {});
+                document.getElementById('offline-status').textContent = `Reconnect attempt ${attempts}...`;
+                try {
+                    const res = await fetch('/healthz');
+                    if (!res.ok) return;
+                } catch (e) {
+                    return;
+                }
+                clearInterval(timer);
+                isOffline = false;
+                document.getElementById('offline-overlay').classList.remove('active');
+                showToast('Connection restored.', 'success');
+                refreshAll();
             }, 2000);
         }
 
-        // Initial setup
-        document.addEventListener('DOMContentLoaded', () => {
-            // Render initial markdown
-            const rawMarkdown = document.getElementById('raw-markdown').innerText;
-            const reportContainer = document.getElementById('report-container');
-            if (rawMarkdown.includes('No RCA reports generated yet')) {
-                reportContainer.innerHTML = `<p style="color: var(--text-secondary); text-align: center; padding: 2rem;">${rawMarkdown}</p>`;
-            } else {
-                reportContainer.innerHTML = marked.parse(rawMarkdown);
-            }
+        // --- Initial setup ---
 
-            // Initialize Telemetry Chart
-            initChart();
-
-            // Periodic updates
-            setInterval(checkStatus, 2000);
-            setInterval(loadTelemetry, 3000);
-            
-            checkStatus();
+        function refreshAll() {
+            pollStatus();
             loadTelemetry();
+            loadTransactions();
+            if (currentTab === 'backups') loadBackups();
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            if (window.marked) {
+                // Reports are Markdown; never let raw HTML in them reach the page.
+                marked.use({ renderer: { html: html => esc(html) } });
+            }
+            try {
+                if (localStorage.getItem(INTRO_KEY)) document.getElementById('intro-wrap').hidden = true;
+            } catch (e) { /* storage unavailable */ }
+            document.querySelectorAll('.nav-item').forEach(item => item.addEventListener('click', () => switchTab(item.dataset.tab)));
+
+            if (INITIAL_REPORT) renderReport(INITIAL_REPORT);
+            else renderReport(null);
+            telemetryChart = makeChart('telemetryChart');
+            chaosChart = makeChart('chaosChart');
+
+            switchTab((location.hash || '#overview').slice(1));
+            refreshAll();
+
+            // Poll only while the tab is visible, so idle visitors cost the server nothing.
+            setInterval(() => { if (!document.hidden && !isOffline) pollStatus(); }, 2000);
+            setInterval(() => {
+                if (document.hidden || isOffline) return;
+                if (currentTab === 'metrics' || currentTab === 'chaos') loadTelemetry();
+            }, 4000);
+            setInterval(() => {
+                if (document.hidden || isOffline) return;
+                if (currentTab === 'overview') loadTransactions();
+                if (currentTab === 'backups') loadBackups();
+            }, 10000);
+            document.addEventListener('visibilitychange', () => { if (!document.hidden && !isOffline) refreshAll(); });
         });
     </script>
 </body>
