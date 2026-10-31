@@ -45,8 +45,12 @@ def clean_state(monkeypatch):
     monkeypatch.setattr(main, "detector", main.Detector())
     monkeypatch.setattr(main, "_runtime_api_key", "")
     monkeypatch.setattr(main, "_db_error", None)
+    monkeypatch.setattr(main, "_demo", None)
+    monkeypatch.setattr(main, "_last_sample_at", None)
     main.open_incidents.clear()
     main._last_fault_at.clear()
     main._events.clear()
+    main._pending_faults.clear()
+    main._first_flagged.clear()
     yield
     main.release_memory()

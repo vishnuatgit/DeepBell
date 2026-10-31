@@ -1,1162 +1,800 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeepBell SRE Cockpit</title>
-    <meta name="description" content="DeepBell is a self-monitoring SRE lab: a FastAPI service that watches its own CPU and memory, flags anomalies with an Isolation Forest, writes incident reports and rolls its SQLite database back to snapshots. Inject faults in the Chaos Lab and watch it react.">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DeepBell · Self-monitoring incident response lab</title>
+    <meta name="description" content="DeepBell is a mini SRE lab in FastAPI: it detects its own CPU and memory anomalies with a baseline check and an Isolation Forest, writes incident reports, and restores its SQLite database from snapshots. Run the guided demo or break it yourself in the Chaos Lab.">
     <meta name="author" content="Chandana Vishnu Jayanth">
     <meta name="theme-color" content="#03050c">
+    <meta name="color-scheme" content="dark light">
     <meta property="og:type" content="website">
     <meta property="og:site_name" content="DeepBell">
-    <meta property="og:title" content="DeepBell SRE Cockpit">
-    <meta property="og:description" content="A self-monitoring SRE lab: anomaly detection on its own CPU and memory, incident reports, database snapshots and rollback, and a Chaos Lab to break it on purpose.">
+    <meta property="og:title" content="DeepBell · Self-monitoring incident response lab">
+    <meta property="og:description" content="A mini SRE lab in FastAPI: it detects its own CPU and memory anomalies, writes incident reports, and restores from snapshots.">
     <meta name="twitter:card" content="summary">
     <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <script>
+        // Apply the saved theme before the first paint, so the page never flashes the other one.
+        try { if (localStorage.getItem('deepbell.theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) { /* storage unavailable */ }
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Outfit:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/styles.css?v={{ static_version }}">
     <script defer src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js" integrity="sha384-/TQbtLCAerC3jgaim+N78RZSDYV7ryeoBCVqTuzRrFec2akfBkHS7ACQ3PQhvMVi" crossorigin="anonymous"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.js" integrity="sha384-dug+JxfBvklEQdJ4AYuBBAIScUz0bVN73xpy273gcAwHjb3qI0fXmuYNaNfdyYJG" crossorigin="anonymous"></script>
+    <script defer src="/static/app.js?v={{ static_version }}"></script>
 </head>
 <body>
-    <!-- Offline Reconnect Overlay -->
-    <div class="offline-overlay" id="offline-overlay" role="alert">
-        <div class="offline-content">
-            <div class="offline-spinner"></div>
-            <h2>Server Unreachable</h2>
-            <p>The cockpit lost its connection to the server. It may be restarting, for example after a simulated crash or a redeploy.</p>
-            <p class="offline-sub" id="offline-status">Attempting to reconnect...</p>
-        </div>
-    </div>
+<a class="skip-link" href="#main">Skip to content</a>
 
-    <!-- Confirmation dialog -->
-    <div class="modal-overlay" id="confirm-modal" hidden>
-        <div class="modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title">
-            <h2 id="confirm-title"></h2>
-            <p id="confirm-body"></p>
-            <div class="modal-actions">
-                <button class="btn btn-secondary" id="confirm-cancel">Cancel</button>
-                <button class="btn" id="confirm-ok">Confirm</button>
+<svg class="sprite" aria-hidden="true" focusable="false">
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></symbol>
+    <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9" rx="1"/><rect x="14" y="3" width="7" height="5" rx="1"/><rect x="14" y="12" width="7" height="9" rx="1"/><rect x="3" y="16" width="7" height="5" rx="1"/></symbol>
+    <symbol id="i-incident" viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/></symbol>
+    <symbol id="i-telemetry" viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3"/></symbol>
+    <symbol id="i-chaos" viewBox="0 0 24 24"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></symbol>
+    <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+    <symbol id="i-cpu" viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><rect x="9.5" y="9.5" width="5" height="5" rx="0.5"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></symbol>
+    <symbol id="i-memory" viewBox="0 0 24 24"><path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-11-7-11S5 10.7 5 15a7 7 0 0 0 7 7z"/></symbol>
+    <symbol id="i-layers" viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></symbol>
+    <symbol id="i-crash" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m9 9 6 6M15 9l-6 6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M6 4.5v15a1 1 0 0 0 1.5.86l12-7.5a1 1 0 0 0 0-1.72l-12-7.5A1 1 0 0 0 6 4.5z"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></symbol>
+    <symbol id="i-x" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+    <symbol id="i-download" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/></symbol>
+    <symbol id="i-file" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8"/></symbol>
+    <symbol id="i-file-plus" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M12 18v-6M9 15h6"/></symbol>
+    <symbol id="i-restore" viewBox="0 0 24 24"><path d="M1 4v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="i-activity" viewBox="0 0 24 24"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+    <symbol id="i-server" viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="8" rx="2"/><rect x="2" y="13" width="20" height="8" rx="2"/><path d="M6 7h.01M6 17h.01"/></symbol>
+    <symbol id="i-target" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><path d="M22 12h-4M6 12H2M12 6V2M12 22v-4"/></symbol>
+    <symbol id="i-arrow-right" viewBox="0 0 24 24"><path d="M5 12h14M12 5l7 7-7 7"/></symbol>
+    <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/></symbol>
+    <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></symbol>
+    <symbol id="i-terminal" viewBox="0 0 24 24"><path d="m4 17 6-6-6-6"/><path d="M12 19h8"/></symbol>
+    <symbol id="i-lock" viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
+    <symbol id="i-external" viewBox="0 0 24 24"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-wifi-off" viewBox="0 0 24 24"><path d="m1 1 22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55M5 12.55a10.94 10.94 0 0 1 5.17-2.39M10.71 5.05A16 16 0 0 1 22.58 9M1.42 9a15.91 15.91 0 0 1 4.7-2.88M8.53 16.11a6 6 0 0 1 6.95 0M12 20h.01"/></symbol>
+    <symbol id="i-github" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></symbol>
+</svg>
+
+<div class="ambient" aria-hidden="true"></div>
+
+<div class="app">
+    <aside class="sidebar">
+        <div class="sidebar-top">
+            <a class="brand" href="#overview" aria-label="DeepBell overview">
+                <svg class="brand-logo" aria-hidden="true"><use href="#i-bell"/></svg>
+                <span class="brand-text">DeepBell</span>
+                <span class="badge-sre">SRE</span>
+            </a>
+            <div class="status-box status-box-top" data-status-box data-tone="neutral">
+                <span class="pulse-dot" aria-hidden="true"></span>
+                <span class="status-text" data-health-text>Connecting…</span>
             </div>
         </div>
-    </div>
-
-    <div class="toast-stack" id="toasts" aria-live="polite"></div>
-
-    <div class="glow-layer" aria-hidden="true">
-        <div class="glow-bg"></div>
-        <div class="glow-bg-2"></div>
-    </div>
-    <div class="dashboard-container">
-
-        <!-- Sidebar Navigation -->
-        <aside class="sidebar">
-            <div class="brand">
-                <svg class="brand-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true">
-                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" stroke-linecap="round" stroke-linejoin="round"/>
-                </svg>
-                <span class="brand-text">DeepBell <span class="badge-sre">SRE</span></span>
+        <nav class="nav" id="nav" aria-label="Views">
+            <a class="nav-item" href="#overview" data-view="overview"><svg class="icon" aria-hidden="true"><use href="#i-overview"/></svg>Overview</a>
+            <a class="nav-item" href="#incidents" data-view="incidents"><svg class="icon" aria-hidden="true"><use href="#i-incident"/></svg>Incidents<span class="nav-count" id="nav-open" hidden></span></a>
+            <a class="nav-item" href="#telemetry" data-view="telemetry"><svg class="icon" aria-hidden="true"><use href="#i-telemetry"/></svg>Live Telemetry</a>
+            <a class="nav-item" href="#chaos" data-view="chaos"><svg class="icon" aria-hidden="true"><use href="#i-chaos"/></svg>Chaos Lab</a>
+            <a class="nav-item" href="#timemachine" data-view="timemachine"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>Time Machine</a>
+            <a class="nav-item" href="#about" data-view="about"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>About</a>
+            {% if not public_demo %}<a class="nav-item" href="#settings" data-view="settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>Settings</a>{% endif %}
+        </nav>
+        <div class="sidebar-footer">
+            <div class="status-box" data-status-box data-tone="neutral" title="Watchdog health">
+                <span class="pulse-dot" aria-hidden="true"></span>
+                <span class="status-text" data-health-text>Connecting…</span>
             </div>
-            <nav class="nav-links" aria-label="Sections">
-                <button class="nav-item active" data-tab="overview" aria-current="page">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <rect x="3" y="3" width="7" height="9" rx="1" />
-                        <rect x="14" y="3" width="7" height="5" rx="1" />
-                        <rect x="14" y="12" width="7" height="9" rx="1" />
-                        <rect x="3" y="16" width="7" height="5" rx="1" />
-                    </svg>
-                    Overview
+            <p class="env-note">{% if public_demo %}Public demo · shared instance{% else %}Local run{% endif %} · sampling every {{ config.sampleIntervalSec }} s</p>
+            <div class="sidebar-links">
+                <a href="#overview" data-scroll-to="how-title"><svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>How it works</a>
+                <button class="link-btn theme-toggle" id="theme-toggle" type="button" aria-pressed="false">
+                    <svg class="icon icon-sun" aria-hidden="true"><use href="#i-sun"/></svg>
+                    <svg class="icon icon-moon" aria-hidden="true"><use href="#i-moon"/></svg>
+                    <span id="theme-label">Light theme</span>
                 </button>
-                <button class="nav-item" data-tab="metrics">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M3 3v18h18" stroke-linecap="round" stroke-linejoin="round"/>
-                        <path d="M18.7 8l-5.1 5.2-2.8-2.7L7 14.3" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    Live Telemetry
-                </button>
-                <button class="nav-item" data-tab="chaos">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" stroke-linecap="round" stroke-linejoin="round"/>
-                    </svg>
-                    Chaos Lab
-                </button>
-                <button class="nav-item" data-tab="backups">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 6v6l4 2"/>
-                    </svg>
-                    Time Machine
-                </button>
-                <button class="nav-item" data-tab="settings">
-                    <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                        <circle cx="12" cy="12" r="3"/>
-                        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                    </svg>
-                    Settings
-                </button>
-            </nav>
-            <div class="sidebar-footer">
-                <div class="status-indicator-box" title="Watchdog health">
-                    <div class="pulse-dot yellow" id="health-dot"></div>
-                    <span id="health-text">Connecting...</span>
+                <a href="{{ repo_url }}" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true"><use href="#i-github"/></svg>Source on GitHub</a>
+                <a href="{{ author_url }}" target="_blank" rel="noopener"><svg class="icon" aria-hidden="true"><use href="#i-external"/></svg>Built by Vishnu Jayanth</a>
+            </div>
+        </div>
+    </aside>
+
+    <main class="main" id="main" tabindex="-1">
+        <div class="conn-banner" id="conn-banner" hidden>
+            <span class="spinner" aria-hidden="true"></span>
+            <p><strong>Connection lost.</strong> The server may be restarting (after a crash or a redeploy) or waking up from sleep. The numbers below are from the last answer; actions are paused.<span class="conn-attempt" id="conn-attempt"></span></p>
+        </div>
+        <header class="header">
+            <div class="header-title">
+                <span class="eyebrow" id="view-eyebrow">Self-monitoring incident response lab</span>
+                <h1 id="view-title" tabindex="-1">Overview</h1>
+            </div>
+            <div class="stat-cards" aria-label="Live readings of this server process">
+                <div class="stat-card">
+                    <span class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-cpu"/></svg>CPU</span>
+                    <div class="stat-row">
+                        <span class="stat-value"><span id="header-cpu">--</span><span class="stat-unit">%</span></span>
+                        <svg class="spark" id="spark-cpu" viewBox="0 0 80 24" preserveAspectRatio="none" aria-hidden="true"></svg>
+                    </div>
+                    <div class="stat-bar"><div class="stat-progress" id="cpu-bar"></div></div>
+                    <span class="stat-note" id="cpu-note">of one core</span>
                 </div>
-                <button class="intro-link" onclick="showIntro()">How this demo works</button>
-                <div class="credits">
-                    <a href="{{ repo_url }}" target="_blank" rel="noopener">
-                        <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.69 0-1.26.45-2.29 1.19-3.1-.12-.29-.52-1.46.11-3.05 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.59.23 2.76.11 3.05.74.81 1.19 1.84 1.19 3.1 0 4.42-2.7 5.39-5.26 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>
-                        Source on GitHub
-                    </a>
-                    <a href="{{ author_url }}" target="_blank" rel="noopener">Built by Vishnu Jayanth</a>
+                <div class="stat-card">
+                    <span class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-memory"/></svg>Memory (RSS)</span>
+                    <div class="stat-row">
+                        <span class="stat-value"><span id="header-ram">--</span><span class="stat-unit">MB</span></span>
+                        <svg class="spark spark-ram" id="spark-ram" viewBox="0 0 80 24" preserveAspectRatio="none" aria-hidden="true"></svg>
+                    </div>
+                    <div class="stat-bar"><div class="stat-progress" id="ram-bar"></div></div>
+                    <span class="stat-note" id="ram-note">learning baseline</span>
                 </div>
             </div>
-        </aside>
+            <a class="demo-chip" id="demo-chip" href="#overview" hidden></a>
+        </header>
 
-        <!-- Main Content Panel -->
-        <main class="main-content">
-
-            <!-- Global Dashboard Header -->
-            <header class="header">
-                <div class="header-title">
-                    <span class="subtitle">SRE Automation &amp; Telemetry Analytics Console</span>
-                    <h1 id="page-title">Overview</h1>
+        <!-- Overview -->
+        <section class="view" id="view-overview" aria-labelledby="view-title">
+            <div class="status-banner" id="status-banner" data-tone="neutral">
+                <span class="banner-icon" aria-hidden="true"><span class="pulse-dot"></span></span>
+                <div class="banner-copy">
+                    <p class="banner-title" id="banner-title">Connecting to the watchdog…</p>
+                    <p class="banner-detail" id="banner-detail">Waiting for the first status update.</p>
                 </div>
-                <div class="status-cards">
-                    <div class="stat-card">
-                        <span class="stat-label">CPU Usage</span>
-                        <div class="stat-val-box">
-                            <span class="stat-value" id="header-cpu">--</span><span class="stat-unit">%</span>
-                        </div>
-                        <div class="stat-bar"><div class="stat-progress" id="cpu-bar" style="width: 0%;"></div></div>
-                        <span class="stat-note" id="cpu-note">of one core</span>
-                    </div>
-                    <div class="stat-card">
-                        <span class="stat-label">RAM (RSS)</span>
-                        <div class="stat-val-box">
-                            <span class="stat-value" id="header-ram">--</span><span class="stat-unit">MB</span>
-                        </div>
-                        <div class="stat-bar"><div class="stat-progress" id="ram-bar" style="width: 0%;"></div></div>
-                        <span class="stat-note" id="ram-note">baseline --</span>
-                    </div>
-                </div>
-            </header>
+                <dl class="banner-facts">
+                    <div><dt>Watchdog</dt><dd>every {{ config.sampleIntervalSec }} s</dd></div>
+                    <div><dt>Baseline</dt><dd id="banner-baseline">--</dd></div>
+                    <div><dt>Last snapshot</dt><dd id="banner-snapshot">--</dd></div>
+                </dl>
+            </div>
 
-            <!-- TABS CONTENT SECTIONS -->
+            <div class="grid">
+                <section class="panel hero col-8" aria-labelledby="how-title">
+                    <p class="hero-lead">A mini SRE lab in FastAPI: it detects its own CPU and memory anomalies, writes incident reports, and restores from snapshots.</p>
+                    <p class="hero-sub">Everything on this page is live data from this server's own process.{% if public_demo %} This is a shared instance, so everyone visiting sees the same readings, incidents and faults.{% endif %}</p>
+                    <div class="hero-actions">
+                        <button class="btn btn-primary" type="button" id="demo-run"><svg class="icon" aria-hidden="true"><use href="#i-play"/></svg><span>Run the guided demo</span></button>
+                        <a class="btn btn-secondary" href="#chaos"><svg class="icon" aria-hidden="true"><use href="#i-chaos"/></svg>Break it yourself</a>
+                    </div>
+                    <div class="pipeline-head">
+                        <h2 id="how-title">How it works</h2>
+                        <span class="live-tag" id="pipeline-live"><span class="live-dot" aria-hidden="true"></span><span class="live-text">live</span></span>
+                    </div>
+                    <ol class="pipeline" id="pipeline" aria-describedby="pipeline-note">
+                        <li class="pipe-step" data-key="sample" data-state="idle">
+                            <span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-activity"/></svg></span>
+                            <div class="pipe-copy">
+                                <strong><span class="pipe-n">1</span>Sample</strong>
+                                <span class="pipe-what">psutil reads CPU and memory every {{ config.sampleIntervalSec }} s</span>
+                                <span class="pipe-detail" data-detail></span>
+                            </div>
+                        </li>
+                        <li class="pipe-step" data-key="detect" data-state="idle">
+                            <span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-target"/></svg></span>
+                            <div class="pipe-copy">
+                                <strong><span class="pipe-n">2</span>Detect</strong>
+                                <span class="pipe-what">baseline check, then an Isolation Forest, {{ config.openAfter }} samples in a row</span>
+                                <span class="pipe-detail" data-detail></span>
+                            </div>
+                        </li>
+                        <li class="pipe-step" data-key="report" data-state="idle">
+                            <span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-file"/></svg></span>
+                            <div class="pipe-copy">
+                                <strong><span class="pipe-n">3</span>Report</strong>
+                                <span class="pipe-what">{% if api_key_configured %}Gemini via LangChain, template as fallback{% else %}built-in template (no AI key set){% endif %}</span>
+                                <span class="pipe-detail" data-detail></span>
+                            </div>
+                        </li>
+                        <li class="pipe-step" data-key="recover" data-state="idle">
+                            <span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-restore"/></svg></span>
+                            <div class="pipe-copy">
+                                <strong><span class="pipe-n">4</span>Recover</strong>
+                                <span class="pipe-what">release the memory or roll back to a snapshot</span>
+                                <span class="pipe-detail" data-detail></span>
+                            </div>
+                        </li>
+                    </ol>
+                    <p class="pipeline-note" id="pipeline-note">Each step lights up as the server works through it, for the guided demo and for any fault you inject.</p>
+                </section>
 
-            <!-- 1. Overview Tab -->
-            <section id="tab-overview" class="tab-content active">
-                <div class="grid-layout">
-                    <div class="col-12" id="intro-wrap">
-                        <div class="glass-panel intro-card">
-                            <button class="intro-close" onclick="dismissIntro()" aria-label="Dismiss">&times;</button>
-                            <h2>How this demo works</h2>
-                            <p class="intro-lead">DeepBell monitors <strong>its own server process</strong>: the CPU and memory on this page belong to the app you are looking at, sampled every 2 seconds.{% if public_demo %} This is a <strong>shared instance</strong>: everyone visiting sees the same telemetry and the same faults.{% endif %}</p>
-                            <ol class="intro-steps">
-                                <li><span class="step-num">1</span><div><strong>Watch</strong><p>The watchdog learns a baseline and flags samples that move well away from it.</p></div></li>
-                                <li><span class="step-num">2</span><div><strong>Inject a fault</strong><p>In the Chaos Lab, spike the CPU, leak memory or corrupt the database.</p></div></li>
-                                <li><span class="step-num">3</span><div><strong>Read the report</strong><p>Each incident gets a report{% if api_key_configured %} written by Gemini{% else %} from a built-in template{% endif %}, shown on this page.</p></div></li>
-                                <li><span class="step-num">4</span><div><strong>Roll back</strong><p>The Time Machine restores the database from a snapshot.</p></div></li>
-                            </ol>
-                            <div class="intro-actions">
-                                <button class="btn" onclick="switchTab('chaos')">Open the Chaos Lab</button>
-                                <button class="btn btn-secondary" onclick="dismissIntro()">Got it</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-8">
-                        <div class="glass-panel report-section">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Latest Incident Report</h2>
-                                    <p class="panel-sub" id="report-meta"></p>
-                                </div>
-                                <button class="btn btn-secondary" onclick="triggerManualRCA()" id="btn-rca-gen">Generate report now</button>
-                            </div>
-                            {% if not api_key_configured %}
-                            {% if public_demo %}
-                            <p class="form-help">No Gemini key is configured on this server, so reports come from DeepBell's built-in template, built from the same telemetry.</p>
-                            {% else %}
-                            <p class="form-help">AI reports need a Google Gemini API key (Settings tab or <code>GOOGLE_API_KEY</code>). Without one, DeepBell writes a built-in template report from the same telemetry.</p>
-                            {% endif %}
-                            {% endif %}
-                            <div class="report-card" id="report-container">
-                                {% if not report %}<p class="empty-state">No incident reports yet. Inject a fault in the Chaos Lab to create one.</p>{% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-4">
-                        <div class="glass-panel agent-status-card">
-                            <h3>Telemetry Watchdog</h3>
-                            <div class="agent-activity-box">
-                                <div class="agent-avatar">
-                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="avatar-svg" aria-hidden="true">
-                                        <rect x="3" y="11" width="18" height="10" rx="2" />
-                                        <circle cx="12" cy="5" r="2"/>
-                                        <path d="M12 7v4" stroke-linecap="round"/>
-                                    </svg>
-                                </div>
-                                <div class="agent-details">
-                                    <h4 id="agent-state">Connecting...</h4>
-                                    <p id="agent-subtext">Waiting for the first status update.</p>
-                                </div>
-                            </div>
-                            <dl class="baseline-facts">
-                                <div><dt>Baseline</dt><dd id="baseline-source">--</dd></div>
-                                <div><dt>CPU alert above</dt><dd id="baseline-cpu">--</dd></div>
-                                <div><dt>Memory alert above</dt><dd id="baseline-ram">--</dd></div>
-                            </dl>
-                            <div class="live-activity-feed">
-                                <div class="terminal-mockup">
-                                    <div class="terminal-header">
-                                        <div class="terminal-buttons">
-                                            <span class="terminal-dot red-dot"></span>
-                                            <span class="terminal-dot yellow-dot"></span>
-                                            <span class="terminal-dot green-dot"></span>
-                                        </div>
-                                        <div class="terminal-title">server_events</div>
-                                    </div>
-                                    <ul id="console-logs" class="console-logs" aria-live="off"></ul>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12">
-                        <div class="glass-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Transactions</h2>
-                                    <p class="panel-sub">Sample rows in this app's SQLite database. Corrupt it in the Chaos Lab, then restore it in the Time Machine.</p>
-                                </div>
-                                <form class="tx-actions" onsubmit="addTransaction(event)">
-                                    <label class="sr-only" for="tx-amount">Amount</label>
-                                    <input id="tx-amount" type="number" min="0.01" max="1000000" step="0.01" value="25.00" class="form-control form-control-sm" required>
-                                    <button class="btn" type="submit" id="btn-add-tx">Add transaction</button>
-                                </form>
-                            </div>
-                            <div class="db-alert" data-db-alert hidden>
-                                <span>The database is unreadable: <code data-db-error></code>. Restore a snapshot to recover.</span>
-                                <button class="btn btn-small" onclick="switchTab('backups')">Open Time Machine</button>
-                            </div>
-                            <div class="table-container">
-                                <table class="metrics-table tx-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Time</th>
-                                            <th class="num">Amount</th>
-                                            <th class="hide-sm">Transaction ID</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tx-body">
-                                        <tr><td colspan="3" class="table-empty">Loading transactions...</td></tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                            <p class="panel-foot" id="snapshot-foot"></p>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 2. Live Telemetry Tab -->
-            <section id="tab-metrics" class="tab-content">
-                <div class="grid-layout">
-                    <div class="col-12">
-                        <div class="glass-panel chart-container-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Resource Telemetry Timeline</h2>
-                                    <p class="panel-sub">Last two minutes. <span class="key key-red"></span>red points are anomalous samples; <span class="key key-grey"></span>grey dashed lines are synthetic warm-up samples.</p>
-                                </div>
-                            </div>
-                            <div class="chart-wrapper">
-                                <canvas id="telemetryChart" aria-label="CPU and memory over the last two minutes" role="img"></canvas>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-12">
-                        <div class="glass-panel">
-                            <div class="panel-header">
-                                <h2>Real-Time System Metrics</h2>
-                                <span class="live-badge">POLLING ACTIVE</span>
-                            </div>
-                            <div class="table-container">
-                                <table class="metrics-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Time</th>
-                                            <th class="num">CPU Usage</th>
-                                            <th class="num">Memory RSS</th>
-                                            <th>Watchdog Evaluation</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="metrics-table-body">
-                                        <tr>
-                                            <td colspan="4" class="table-empty">Waiting for telemetry stream...</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 3. Chaos Lab Tab -->
-            <section id="tab-chaos" class="tab-content">
-                <div class="grid-layout">
-                    <div class="col-7">
-                        <div class="glass-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Fault Injection Control Panel</h2>
-                                    <p class="panel-sub">Cause a real failure in this server and watch the pipeline react in Live Results.{% if public_demo %} Faults are shared by everyone on this demo, capped, and have a {{ config.cooldownSec }} s cooldown.{% endif %}</p>
-                                </div>
-                            </div>
-                            <div class="chaos-grid">
-                                <div class="chaos-card cpu-spike-card" id="card-cpu_spike">
-                                    <div class="chaos-icon text-orange">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                            <rect x="6" y="6" width="12" height="12" rx="2"/>
-                                            <rect x="9.5" y="9.5" width="5" height="5" rx="0.5"/>
-                                            <path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4" stroke-linecap="round"/>
-                                        </svg>
-                                    </div>
-                                    <h3>CPU Spike</h3>
-                                    <p>Runs a busy loop in a background thread for {{ config.maxSpikeSec }} seconds.</p>
-                                    <div class="chaos-foot">
-                                        <button class="btn btn-chaos" id="btn-cpu_spike" onclick="injectFault('cpu_spike')">Inject spike</button>
-                                        <span class="chaos-state" id="state-cpu_spike"></span>
-                                    </div>
-                                </div>
-                                <div class="chaos-card memory-leak-card" id="card-memory_leak">
-                                    <div class="chaos-icon text-red">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                            <path d="M12 22a7 7 0 0 0 7-7c0-4.3-7-11-7-11S5 10.7 5 15a7 7 0 0 0 7 7z"/>
-                                        </svg>
-                                    </div>
-                                    <h3>Memory Leak</h3>
-                                    <p>Allocates {{ config.leakStepMb }} MB per click and holds it until you release it (at most {{ config.leakLimitMb }} MB).</p>
-                                    <div class="leak-meter" aria-hidden="true"><div class="leak-fill" id="leak-fill"></div></div>
-                                    <span class="chaos-state" id="leak-held">0 of {{ config.leakLimitMb }} MB held</span>
-                                    <div class="chaos-foot">
-                                        <button class="btn btn-chaos" id="btn-memory_leak" onclick="injectFault('memory_leak')">Inject leak</button>
-                                        <button class="btn btn-secondary btn-small" id="btn-release" onclick="releaseMemory()">Release memory</button>
-                                        <span class="chaos-state" id="state-memory_leak"></span>
-                                    </div>
-                                </div>
-                                <div class="chaos-card db-corrupt-card" id="card-corrupt_db">
-                                    <div class="chaos-icon text-yellow">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                            <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
-                                        </svg>
-                                    </div>
-                                    <h3>Database Corruption</h3>
-                                    <p>Writes garbage over the SQLite file header, so every query fails until you roll back.</p>
-                                    <div class="chaos-foot">
-                                        <button class="btn btn-chaos" id="btn-corrupt_db" onclick="injectFault('corrupt_db')">Corrupt database</button>
-                                        <span class="chaos-state" id="state-corrupt_db"></span>
-                                    </div>
-                                </div>
-                                <div class="chaos-card crash-card{% if public_demo %} is-disabled{% endif %}" id="card-fatal_crash">
-                                    <div class="chaos-icon text-purple">
-                                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                                            <rect x="3" y="3" width="18" height="18" rx="2" />
-                                            <path d="M9 9l6 6M15 9l-6 6" stroke-linecap="round"/>
-                                        </svg>
-                                    </div>
-                                    <h3>Fatal Server Crash</h3>
-                                    {% if public_demo %}
-                                    <p>Disabled on the public demo: it would take the site down for everyone. Run DeepBell locally to try it; the <code>run_all.py</code> supervisor restarts the process.</p>
-                                    <div class="chaos-foot">
-                                        <button class="btn btn-chaos" disabled>Disabled here</button>
-                                    </div>
-                                    {% else %}
-                                    <p>Hard-exits the process (<code>os._exit(1)</code>). The <code>run_all.py</code> supervisor restarts it.</p>
-                                    <div class="chaos-foot">
-                                        <button class="btn btn-chaos" id="btn-fatal_crash" onclick="injectFault('fatal_crash')">Crash server</button>
-                                    </div>
-                                    {% endif %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                    <div class="col-5">
-                        <div class="glass-panel chart-container-panel results-panel">
-                            <div class="panel-header">
-                                <div>
-                                    <h2>Live Results</h2>
-                                    <p class="panel-sub"><span class="key key-red"></span>red points are samples the watchdog flagged.</p>
-                                </div>
-                                <span class="health-pill" id="chaos-health">--</span>
-                            </div>
-                            <div class="chart-wrapper chart-compact">
-                                <canvas id="chaosChart" aria-label="CPU and memory over the last two minutes" role="img"></canvas>
-                            </div>
-                            <div class="db-alert" data-db-alert hidden>
-                                <span>The database is unreadable: <code data-db-error></code>.</span>
-                                <button class="btn btn-small" onclick="switchTab('backups')">Roll back in Time Machine</button>
-                            </div>
-                            <div class="terminal-mockup">
-                                <div class="terminal-header">
-                                    <div class="terminal-buttons">
-                                        <span class="terminal-dot red-dot"></span>
-                                        <span class="terminal-dot yellow-dot"></span>
-                                        <span class="terminal-dot green-dot"></span>
-                                    </div>
-                                    <div class="terminal-title">server_events</div>
-                                </div>
-                                <ul id="chaos-logs" class="console-logs console-short" aria-live="off"></ul>
-                            </div>
-                            <div class="report-teaser">
-                                <div>
-                                    <span class="stat-label">Latest report</span>
-                                    <p id="chaos-report-title">--</p>
-                                </div>
-                                <button class="btn btn-secondary btn-small" onclick="switchTab('overview')">Read it</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </section>
-
-            <!-- 4. Time Machine Tab -->
-            <section id="tab-backups" class="tab-content">
-                <div class="glass-panel">
+                <section class="panel demo-panel col-4" id="demo-panel" aria-labelledby="demo-title">
                     <div class="panel-header">
                         <div>
-                            <h2>Database Recovery Time Machine</h2>
-                            <p class="panel-sub">Every {{ config.snapshotIntervalSec }} seconds the database is copied to a snapshot if its contents changed; the newest {{ config.snapshotsKeep }} are kept. Restore one to roll the database back.</p>
+                            <h2 id="demo-title">Guided demo</h2>
+                            <p class="panel-sub" id="demo-meta">About 40 s, runs on the server</p>
+                        </div>
+                        <span class="badge" id="demo-badge" data-tone="neutral">Ready</span>
+                    </div>
+                    <div class="demo-progress" aria-hidden="true"><div class="demo-progress-fill" id="demo-progress"></div></div>
+                    <ol class="steps" id="demo-steps">
+                        {% for key, title in demo_steps %}
+                        <li class="step" data-key="{{ key }}" data-state="pending">
+                            <span class="step-mark" aria-hidden="true"><svg class="icon"><use href="#i-check"/></svg><span class="step-num">{{ loop.index }}</span></span>
+                            <span class="step-body">
+                                <span class="step-title">{{ title }}<span class="sr-only step-sr"></span></span>
+                                <span class="step-detail"></span>
+                            </span>
+                            <time class="step-time"></time>
+                        </li>
+                        {% endfor %}
+                    </ol>
+                    <p class="demo-foot" id="demo-foot">Same caps and cooldowns as the Chaos Lab. If another visitor's fault is in the way, it waits and says why.</p>
+                </section>
+            </div>
+
+            <div class="kpis" aria-label="Key numbers">
+                <div class="kpi">
+                    <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-server"/></svg>Uptime</span>
+                    <span class="kpi-value" id="kpi-uptime">--</span>
+                    <span class="kpi-note" id="kpi-uptime-note">since the last restart</span>
+                    <div class="kpi-meter" aria-hidden="true"><div class="kpi-meter-fill" id="kpi-healthy-bar"></div></div>
+                </div>
+                <div class="kpi">
+                    <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-incident"/></svg>Open incidents</span>
+                    <span class="kpi-value" id="kpi-open">--</span>
+                    <span class="kpi-note" id="kpi-open-note">--</span>
+                    <svg class="kpi-bars" id="kpi-open-bars" viewBox="0 0 120 28" role="img" aria-label="Loading incidents"></svg>
+                </div>
+                <div class="kpi">
+                    <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-target"/></svg>Time to detect</span>
+                    <span class="kpi-value" id="kpi-ttd">--</span>
+                    <span class="kpi-note" id="kpi-ttd-note">median, fault to incident</span>
+                    <svg class="kpi-bars" id="kpi-ttd-bars" viewBox="0 0 120 28" role="img" aria-label="Loading incidents"></svg>
+                </div>
+                <div class="kpi">
+                    <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-restore"/></svg>Time to recover</span>
+                    <span class="kpi-value" id="kpi-ttr">--</span>
+                    <span class="kpi-note" id="kpi-ttr-note">median, incident to resolved</span>
+                    <svg class="kpi-bars" id="kpi-ttr-bars" viewBox="0 0 120 28" role="img" aria-label="Loading incidents"></svg>
+                </div>
+            </div>
+
+            <div class="grid">
+                <section class="panel chart-panel col-6" aria-labelledby="ov-cpu-title">
+                    <div class="chart-head">
+                        <div>
+                            <h2 id="ov-cpu-title"><span class="series-dot" data-series="cpu" aria-hidden="true"></span>CPU</h2>
+                            <p class="panel-sub" id="ov-cpu-sub">% of one core, last 2 minutes</p>
+                        </div>
+                        <span class="chart-now" id="ov-cpu-now">--</span>
+                    </div>
+                    <div class="chart-box"><canvas id="chart-ov-cpu" role="img" aria-label="CPU over the last two minutes, with the baseline and the alert line"></canvas></div>
+                </section>
+                <section class="panel chart-panel col-6" aria-labelledby="ov-ram-title">
+                    <div class="chart-head">
+                        <div>
+                            <h2 id="ov-ram-title"><span class="series-dot" data-series="ram" aria-hidden="true"></span>Memory (RSS)</h2>
+                            <p class="panel-sub">MB, last 2 minutes</p>
+                        </div>
+                        <span class="chart-now" id="ov-ram-now">--</span>
+                    </div>
+                    <div class="chart-box"><canvas id="chart-ov-ram" role="img" aria-label="Resident memory over the last two minutes, with the baseline and the alert line"></canvas></div>
+                </section>
+                <ul class="legend col-12" aria-label="Chart legend">
+                    <li><span class="sw-line" data-series="cpu"></span>CPU</li>
+                    <li><span class="sw-line" data-series="ram"></span>Memory</li>
+                    <li><span class="sw-line sw-dash" data-series="base"></span>Learned baseline</li>
+                    <li><span class="sw-line sw-dash" data-series="alert"></span>Alert line (baseline + {{ config.cpuDeltaPct|int }} points or {{ config.ramDeltaMb|int }} MB)</li>
+                    <li><span class="sw-dot"></span>Flagged sample</li>
+                    <li><span class="sw-band"></span>Incident open</li>
+                    <li><span class="sw-line sw-dash" data-series="synthetic"></span>Synthetic warm-up</li>
+                </ul>
+                <p class="chart-fallback col-12" data-chart-fallback hidden>The charts need Chart.js from a CDN, which did not load. Live Telemetry has the same samples as a table.</p>
+            </div>
+
+            <section class="panel strip-panel" aria-labelledby="strip-title">
+                <div class="panel-header">
+                    <div>
+                        <h2 id="strip-title">Status, last {{ config.historyMinutes }} minutes</h2>
+                        <p class="panel-sub" id="strip-summary">Loading…</p>
+                    </div>
+                    <ul class="legend legend-tight" aria-label="Status strip legend">
+                        <li><span class="sw" data-state="healthy"></span>Healthy</li>
+                        <li><span class="sw" data-state="degraded"></span>Flagged, no incident</li>
+                        <li><span class="sw" data-state="incident"></span>Incident open</li>
+                        <li><span class="sw" data-state="synthetic"></span>Synthetic warm-up</li>
+                        <li><span class="sw" data-state="nodata"></span>No data</li>
+                    </ul>
+                </div>
+                <div class="strip" id="strip" tabindex="0" role="img" aria-label="Status history is loading">
+                    {% for _ in range(config.historyBars) %}<span class="bar skeleton"></span>{% endfor %}
+                </div>
+                <div class="strip-axis" aria-hidden="true"><span>{{ config.historyMinutes }} min ago</span><span>{{ (config.historyMinutes // 2)|int }} min ago</span><span>now</span></div>
+                <p class="strip-detail" id="strip-detail" aria-live="polite">Hover a bar, or focus the strip and use the arrow keys, for details. Click a red bar, or press Enter on it, to open its incident.</p>
+            </section>
+
+            <div class="grid">
+                <section class="panel latest-panel col-7" aria-labelledby="latest-title">
+                    <div class="panel-header">
+                        <div>
+                            <h2 id="latest-title">Latest incident report</h2>
+                            <p class="panel-sub" id="latest-meta"></p>
+                        </div>
+                        <button class="btn btn-secondary btn-small" type="button" id="latest-generate" data-generate-report><svg class="icon" aria-hidden="true"><use href="#i-file-plus"/></svg><span>Write a report now</span></button>
+                    </div>
+                    <div class="md-frame">
+                        <article class="md md-preview" id="latest-body" aria-labelledby="latest-title">{% if not report %}<p class="empty-state">No incident reports yet. Run the guided demo or inject a fault in the Chaos Lab to create one.</p>{% endif %}</article>
+                    </div>
+                    <a class="text-link latest-more" id="latest-open" href="#incidents" hidden>Read the full report and its timeline<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+                </section>
+                <section class="panel col-5" aria-labelledby="recent-title">
+                    <div class="panel-header">
+                        <h2 id="recent-title">Recent incidents</h2>
+                        <a class="text-link" href="#incidents">All incidents<svg class="icon" aria-hidden="true"><use href="#i-arrow-right"/></svg></a>
+                    </div>
+                    <ul class="recent" id="recent-incidents">
+                        <li class="skeleton-row"></li><li class="skeleton-row"></li><li class="skeleton-row"></li>
+                    </ul>
+                </section>
+            </div>
+
+            <section class="panel watchdog" aria-labelledby="watchdog-title">
+                <div class="watchdog-side">
+                    <h2 id="watchdog-title">Telemetry watchdog</h2>
+                    <div class="agent-box" id="agent-box" data-tone="neutral">
+                        <span class="agent-avatar" aria-hidden="true"><svg class="icon"><use href="#i-eye"/></svg></span>
+                        <div>
+                            <p class="agent-state" id="agent-state">Connecting…</p>
+                            <p class="agent-sub" id="agent-sub">Waiting for the first status update.</p>
                         </div>
                     </div>
-                    <div class="db-alert" data-db-alert hidden>
-                        <span>The database is unreadable: <code data-db-error></code>. Restore the newest snapshot below.</span>
+                    <dl class="facts facts-compact">
+                        <div><dt>Baseline</dt><dd id="w-source">--</dd></div>
+                        <div><dt>CPU alert above</dt><dd id="w-cpu">--</dd></div>
+                        <div><dt>Memory alert above</dt><dd id="w-ram">--</dd></div>
+                    </dl>
+                </div>
+                <div class="terminal">
+                    <div class="terminal-head"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><span>server_events</span><span class="terminal-meta">{% if public_demo %}shared by every visitor{% else %}this run{% endif %}</span></div>
+                    <ol class="log" id="log-overview" aria-label="Server events, newest first"><li class="log-empty">Waiting for events…</li></ol>
+                </div>
+            </section>
+        </section>
+
+        <!-- Incidents -->
+        <section class="view" id="view-incidents" aria-labelledby="view-title" hidden>
+            <div class="view-intro">
+                <p class="view-lead">Every incident this server has opened, newest first. <strong>Time to detect</strong> runs from the fault (or the first anomalous sample) to the incident opening; <strong>time to recover</strong> from opening to resolution. Both are demo measurements from this server's own clock.</p>
+                <div class="toolbar">
+                    <div class="seg" role="group" aria-label="Filter incidents">
+                        <button type="button" data-filter="all" aria-pressed="true">All <span class="seg-count" id="count-all">0</span></button>
+                        <button type="button" data-filter="open" aria-pressed="false">Open <span class="seg-count" id="count-open">0</span></button>
+                        <button type="button" data-filter="resolved" aria-pressed="false">Resolved <span class="seg-count" id="count-resolved">0</span></button>
                     </div>
-                    <div class="table-container">
-                        <table class="metrics-table backups-table">
-                            <thead>
-                                <tr>
-                                    <th>Snapshot taken</th>
-                                    <th class="num hide-sm">Size</th>
-                                    <th class="hide-sm">File name</th>
-                                    <th>Action</th>
-                                </tr>
-                            </thead>
-                            <tbody id="backups-table-body">
-                                <tr>
-                                    <td colspan="4" class="table-empty">Scanning snapshots directory...</td>
-                                </tr>
-                            </tbody>
+                    <button class="btn btn-secondary btn-small" id="report-generate" type="button" data-generate-report><svg class="icon" aria-hidden="true"><use href="#i-file-plus"/></svg><span>Write a report now</span></button>
+                </div>
+            </div>
+            <div class="grid incidents-grid">
+                <div class="col-5 incidents-side">
+                    <section class="panel panel-flush" aria-labelledby="list-title">
+                        <h2 class="sr-only" id="list-title">Incident list</h2>
+                        <ul class="incident-list" id="incident-list" aria-label="Incidents">
+                            <li class="skeleton-row"></li><li class="skeleton-row"></li><li class="skeleton-row"></li><li class="skeleton-row"></li>
+                        </ul>
+                    </section>
+                    <section class="panel" aria-labelledby="reports-title">
+                        <div class="panel-header">
+                            <h2 id="reports-title">All reports <span class="count-pill" id="report-count">0</span></h2>
+                            <span class="panel-meta">newest {{ config.reportsKeep }} kept</span>
+                        </div>
+                        <ol class="report-list" id="report-list"><li class="skeleton-row"></li></ol>
+                    </section>
+                </div>
+                <section class="panel incident-detail col-7" id="incident-detail" aria-labelledby="detail-title">
+                    <div id="detail-incident" hidden>
+                        <div class="detail-head">
+                            <span class="kind-icon" id="detail-icon" aria-hidden="true"></span>
+                            <div class="detail-title-wrap">
+                                <h2 id="detail-title">Incident</h2>
+                                <p class="panel-sub" id="detail-sub"></p>
+                            </div>
+                            <span class="badge" id="detail-status"></span>
+                        </div>
+                        <dl class="measures" id="detail-measures"></dl>
+                        <div class="lifecycle" id="detail-lifecycle" aria-hidden="true"></div>
+                        <h3 class="sub-title">Timeline</h3>
+                        <ol class="timeline" id="detail-timeline"></ol>
+                    </div>
+                    <div class="report-head">
+                        <div>
+                            <h3 class="report-title" id="report-title">Report</h3>
+                            <p class="panel-sub" id="report-meta"></p>
+                        </div>
+                        <div class="btn-row">
+                            <span class="badge" id="report-source" hidden></span>
+                            <a class="btn btn-secondary btn-small" id="report-download" href="#" download hidden><svg class="icon" aria-hidden="true"><use href="#i-download"/></svg>Download .md</a>
+                        </div>
+                    </div>
+                    {% if not api_key_configured %}
+                    {% if public_demo %}
+                    <p class="note">No Gemini key is configured on this server, so reports come from DeepBell's built-in template, built from the same telemetry.</p>
+                    {% else %}
+                    <p class="note">AI reports need a Google Gemini API key (Settings, or <code>GOOGLE_API_KEY</code>). Without one, DeepBell writes a built-in template report from the same telemetry.</p>
+                    {% endif %}
+                    {% endif %}
+                    <article class="md" id="report-body">{% if not report %}<p class="empty-state">No incident reports yet. Run the guided demo or inject a fault in the Chaos Lab to create one.</p>{% endif %}</article>
+                </section>
+            </div>
+        </section>
+
+        <!-- Live Telemetry -->
+        <section class="view" id="view-telemetry" aria-labelledby="view-title" hidden>
+            <section class="panel" aria-labelledby="tl-title">
+                <div class="panel-header">
+                    <div>
+                        <h2 id="tl-title">Resource telemetry timeline</h2>
+                        <p class="panel-sub" id="tl-sub">CPU and resident memory of this process, last 2 min. Shaded spans are open incidents; blank spans had no samples.</p>
+                    </div>
+                    <div class="panel-tools">
+                        <span class="live-tag"><span class="live-dot" aria-hidden="true"></span><span class="live-text">live, every {{ config.sampleIntervalSec }} s</span></span>
+                        <div class="seg" role="group" aria-label="Time range">
+                            <button type="button" data-range="120" aria-pressed="true">2 min</button>
+                            <button type="button" data-range="600" aria-pressed="false">10 min</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="charts-2">
+                    <figure class="chart">
+                        <figcaption><span class="chart-title"><span class="series-dot" data-series="cpu" aria-hidden="true"></span>CPU</span><span class="chart-unit" id="cpu-unit">% of one core</span></figcaption>
+                        <div class="chart-box chart-tall"><canvas id="chart-cpu" role="img" aria-label="CPU over time, with the baseline and the alert line"></canvas></div>
+                    </figure>
+                    <figure class="chart">
+                        <figcaption><span class="chart-title"><span class="series-dot" data-series="ram" aria-hidden="true"></span>Memory (RSS)</span><span class="chart-unit">MB</span></figcaption>
+                        <div class="chart-box chart-tall"><canvas id="chart-ram" role="img" aria-label="Resident memory over time, with the baseline and the alert line"></canvas></div>
+                    </figure>
+                </div>
+                <p class="chart-fallback" data-chart-fallback hidden>The charts need Chart.js from a CDN, which did not load. The table below has the same samples.</p>
+            </section>
+            <div class="grid">
+                <section class="panel col-5" aria-labelledby="facts-title">
+                    <div class="panel-header">
+                        <div>
+                            <h2 id="facts-title">Detector</h2>
+                            <p class="panel-sub" id="facts-meta">--</p>
+                        </div>
+                    </div>
+                    <dl class="facts">
+                        <div><dt>Baseline</dt><dd id="f-source">--</dd></div>
+                        <div><dt>CPU, 95th percentile</dt><dd id="f-cpu">--</dd></div>
+                        <div><dt>Memory, median</dt><dd id="f-ram">--</dd></div>
+                        <div><dt>Opens after</dt><dd>{{ config.openAfter }} anomalous samples in a row</dd></div>
+                        <div><dt>Closes after</dt><dd>{{ config.closeAfter }} normal samples in a row</dd></div>
+                        <div><dt>Current streaks</dt><dd id="f-streak">--</dd></div>
+                        <div><dt>Isolation Forest fits</dt><dd id="f-fits">--</dd></div>
+                    </dl>
+                    <p class="note">A sample is a candidate when CPU is {{ config.cpuDeltaPct|int }} points or memory {{ config.ramDeltaMb|int }} MB above the baseline. The Isolation Forest then has to agree it is an outlier, and it has to happen {{ config.openAfter }} times in a row, so a single page load or garbage-collection blip never opens an incident.</p>
+                </section>
+                <section class="panel col-7" aria-labelledby="space-title">
+                    <div class="panel-header">
+                        <div>
+                            <h2 id="space-title">What the detector sees</h2>
+                            <p class="panel-sub">Each sample as a point: CPU against memory. Points beyond either alert line are candidates for the Isolation Forest.</p>
+                        </div>
+                    </div>
+                    <div class="chart-box chart-square"><canvas id="chart-space" role="img" aria-label="Scatter plot of CPU against memory for recent samples, with the alert lines"></canvas></div>
+                </section>
+            </div>
+            <section class="panel" aria-labelledby="samples-title">
+                <div class="panel-header">
+                    <h2 id="samples-title">Latest samples</h2>
+                    <span class="live-tag"><span class="live-dot" aria-hidden="true"></span><span class="live-text">newest first</span></span>
+                </div>
+                <div class="table-wrap">
+                    <table class="table">
+                        <thead><tr><th scope="col">Time</th><th scope="col" class="num">CPU %</th><th scope="col" class="num">Memory MB</th><th scope="col" class="num hide-sm">Memory vs baseline</th><th scope="col">Watchdog</th></tr></thead>
+                        <tbody id="samples-body"><tr><td colspan="5" class="table-empty">Loading samples…</td></tr></tbody>
+                    </table>
+                </div>
+            </section>
+        </section>
+
+        <!-- Chaos Lab -->
+        <section class="view" id="view-chaos" aria-labelledby="view-title" hidden>
+            <p class="view-lead">Cause a real failure in this server and watch the pipeline react in Live results.{% if public_demo %} Faults are shared by everyone on this demo, capped, and each has a {{ config.cooldownSec }} s cooldown.{% endif %}</p>
+            <div class="grid">
+                <section class="panel faults-panel col-7" aria-labelledby="faults-title">
+                    <div class="panel-header">
+                        <div>
+                            <h2 id="faults-title">Fault injection</h2>
+                            <p class="panel-sub">Each fault asks for confirmation first. The caps below are enforced by the server.</p>
+                        </div>
+                    </div>
+                    <div class="chaos-grid">
+                        <article class="chaos-card" data-tone="orange" id="card-cpu_spike">
+                            <span class="chaos-icon" aria-hidden="true"><svg class="icon"><use href="#i-cpu"/></svg></span>
+                            <h3>CPU spike</h3>
+                            <p>Runs a busy loop in a background thread, so CPU jumps well above the baseline.</p>
+                            <p class="chaos-expect"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>What you will see: CPU crosses the alert line, an incident opens after {{ config.openAfter }} anomalous samples in a row, and it closes after {{ config.closeAfter }} normal ones.</span></p>
+                            <ul class="caps"><li><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>{{ config.maxSpikeSec }} s at most</li><li><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>{{ config.cooldownSec }} s cooldown</li></ul>
+                            <div class="chaos-foot">
+                                <button class="btn btn-chaos" type="button" id="btn-cpu_spike" data-fault="cpu_spike"><span>Inject spike</span></button>
+                                <span class="chaos-state" id="state-cpu_spike"></span>
+                            </div>
+                            <div class="cooldown" aria-hidden="true"><div class="cooldown-fill" id="cool-cpu_spike"></div></div>
+                        </article>
+                        <article class="chaos-card" data-tone="red" id="card-memory_leak">
+                            <span class="chaos-icon" aria-hidden="true"><svg class="icon"><use href="#i-memory"/></svg></span>
+                            <h3>Memory leak</h3>
+                            <p>Allocates {{ config.leakStepMb }} MB and holds it until it is released. Freed automatically after {{ (config.leakAutoReleaseSec // 60)|int }} minutes.</p>
+                            <p class="chaos-expect"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>What you will see: memory jumps by {{ config.leakStepMb }} MB and the incident stays open until the memory is released.</span></p>
+                            <div class="leak">
+                                <div class="leak-meter" role="meter" aria-label="Leaked memory held" aria-valuemin="0" aria-valuemax="{{ config.leakLimitMb }}" aria-valuenow="0" id="leak-meter"><div class="leak-fill" id="leak-fill"></div></div>
+                                <span class="chaos-state" id="leak-held">0 of {{ config.leakLimitMb }} MB held</span>
+                            </div>
+                            <ul class="caps"><li><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>{{ config.leakStepMb }} MB a step, {{ config.leakLimitMb }} MB held at most</li><li><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>{{ config.cooldownSec }} s cooldown</li></ul>
+                            <div class="chaos-foot">
+                                <button class="btn btn-chaos" type="button" id="btn-memory_leak" data-fault="memory_leak"><span>Inject leak</span></button>
+                                <button class="btn btn-secondary btn-small" type="button" id="btn-release">Release memory</button>
+                                <span class="chaos-state" id="state-memory_leak"></span>
+                            </div>
+                            <div class="cooldown" aria-hidden="true"><div class="cooldown-fill" id="cool-memory_leak"></div></div>
+                        </article>
+                        <article class="chaos-card" data-tone="yellow" id="card-corrupt_db">
+                            <span class="chaos-icon" aria-hidden="true"><svg class="icon"><use href="#i-layers"/></svg></span>
+                            <h3>Database corruption</h3>
+                            <p>Writes garbage over the SQLite file header, so every query fails until a snapshot is restored.</p>
+                            <p class="chaos-expect"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>What you will see: the next database check fails, an incident opens at once, and it stays open until a snapshot is restored in the Time Machine.</span></p>
+                            <ul class="caps"><li><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>recoverable from a snapshot</li><li><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg>{{ config.cooldownSec }} s cooldown</li></ul>
+                            <div class="chaos-foot">
+                                <button class="btn btn-chaos" type="button" id="btn-corrupt_db" data-fault="corrupt_db"><span>Corrupt database</span></button>
+                                <span class="chaos-state" id="state-corrupt_db"></span>
+                            </div>
+                            <div class="cooldown" aria-hidden="true"><div class="cooldown-fill" id="cool-corrupt_db"></div></div>
+                        </article>
+                        <article class="chaos-card{% if public_demo %} is-disabled{% endif %}" data-tone="purple" id="card-fatal_crash">
+                            <span class="chaos-icon" aria-hidden="true"><svg class="icon"><use href="#i-crash"/></svg></span>
+                            <h3>Fatal crash</h3>
+                            {% if public_demo %}
+                            <p>Disabled on the public demo: it would take the site down for everyone. Run DeepBell locally to try it; the <code>run_all.py</code> supervisor restarts the process.</p>
+                            <ul class="caps"><li><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>local runs only</li></ul>
+                            <div class="chaos-foot">
+                                <button class="btn btn-chaos" type="button" disabled><span>Disabled here</span></button>
+                            </div>
+                            {% else %}
+                            <p>Hard-exits the process (<code>os._exit(1)</code>). The <code>run_all.py</code> supervisor restarts it after 2 s, and this page reconnects.</p>
+                            <ul class="caps"><li><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>off in public demo mode</li></ul>
+                            <div class="chaos-foot">
+                                <button class="btn btn-chaos" type="button" id="btn-fatal_crash" data-fault="fatal_crash"><span>Crash server</span></button>
+                            </div>
+                            {% endif %}
+                        </article>
+                    </div>
+                </section>
+                <section class="panel results col-5" aria-labelledby="live-title">
+                    <div class="panel-header">
+                        <div>
+                            <h2 id="live-title">Live results</h2>
+                            <p class="panel-sub">Last 2 minutes. <span class="sw-dot sw-inline" aria-hidden="true"></span>Red points are samples the watchdog flagged.</p>
+                        </div>
+                        <span class="badge" id="chaos-health" data-tone="neutral">--</span>
+                    </div>
+                    <ol class="pipeline pipeline-compact" id="pipeline-chaos" aria-label="Detect, report and recover progress">
+                        <li class="pipe-step" data-key="sample" data-state="idle"><span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-activity"/></svg></span><div class="pipe-copy"><strong>Sample</strong><span class="pipe-detail" data-detail></span></div></li>
+                        <li class="pipe-step" data-key="detect" data-state="idle"><span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-target"/></svg></span><div class="pipe-copy"><strong>Detect</strong><span class="pipe-detail" data-detail></span></div></li>
+                        <li class="pipe-step" data-key="report" data-state="idle"><span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-file"/></svg></span><div class="pipe-copy"><strong>Report</strong><span class="pipe-detail" data-detail></span></div></li>
+                        <li class="pipe-step" data-key="recover" data-state="idle"><span class="pipe-node" aria-hidden="true"><svg class="icon"><use href="#i-restore"/></svg></span><div class="pipe-copy"><strong>Recover</strong><span class="pipe-detail" data-detail></span></div></li>
+                    </ol>
+                    <p class="pipe-caption" id="pipeline-chaos-caption"></p>
+                    <div class="db-alert" data-db-alert hidden>
+                        <svg class="icon" aria-hidden="true"><use href="#i-database"/></svg>
+                        <span>The database is unreadable: <code data-db-error></code>.</span>
+                        <a class="btn btn-danger btn-small" href="#timemachine">Roll back</a>
+                    </div>
+                    <div class="mini-charts">
+                        <figure class="chart">
+                            <figcaption><span class="chart-title"><span class="series-dot" data-series="cpu" aria-hidden="true"></span>CPU</span><span class="chart-unit" id="mini-cpu-now">--</span></figcaption>
+                            <div class="chart-box chart-mini"><canvas id="chart-mini-cpu" role="img" aria-label="CPU over the last two minutes"></canvas></div>
+                        </figure>
+                        <figure class="chart">
+                            <figcaption><span class="chart-title"><span class="series-dot" data-series="ram" aria-hidden="true"></span>Memory</span><span class="chart-unit" id="mini-ram-now">--</span></figcaption>
+                            <div class="chart-box chart-mini"><canvas id="chart-mini-ram" role="img" aria-label="Memory over the last two minutes"></canvas></div>
+                        </figure>
+                    </div>
+                    <div class="terminal">
+                        <div class="terminal-head"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><span>server_events</span><span class="terminal-meta">{% if public_demo %}shared{% else %}this run{% endif %}</span></div>
+                        <ol class="log log-short" id="log-chaos" aria-label="Server events, newest first"><li class="log-empty">Waiting for events…</li></ol>
+                    </div>
+                    <div class="report-teaser">
+                        <div>
+                            <span class="stat-label">Latest report</span>
+                            <p id="chaos-report-title">--</p>
+                        </div>
+                        <a class="btn btn-secondary btn-small" href="#incidents">Read it</a>
+                    </div>
+                </section>
+            </div>
+        </section>
+
+        <!-- Time Machine -->
+        <section class="view" id="view-timemachine" aria-labelledby="view-title" hidden>
+            <p class="view-lead">The app's own SQLite database holds sample transactions. Every {{ config.snapshotIntervalSec }} s it is copied to a snapshot if its contents changed, and the newest {{ config.snapshotsKeep }} are kept. Corrupt it in the Chaos Lab, then roll back here.</p>
+            <div class="db-alert db-alert-lg" data-db-alert hidden>
+                <svg class="icon" aria-hidden="true"><use href="#i-database"/></svg>
+                <span>The database is unreadable: <code data-db-error></code>. Restore the newest readable snapshot to recover.</span>
+                <button class="btn btn-danger btn-small" type="button" id="restore-newest">Restore newest snapshot</button>
+            </div>
+            <div class="grid">
+                <section class="panel snap-panel col-7" aria-labelledby="snap-title">
+                    <div class="panel-header">
+                        <div>
+                            <h2 id="snap-title">Snapshots</h2>
+                            <p class="panel-sub" id="snap-sub">newest first</p>
+                        </div>
+                    </div>
+                    <div class="snap-track" id="snap-track" aria-hidden="true"></div>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead><tr><th scope="col">Taken</th><th scope="col" class="num"><abbr title="Transactions in the snapshot">Rows</abbr></th><th scope="col" class="num hide-sm">Size</th><th scope="col" class="num"><span class="sr-only">Action</span></th></tr></thead>
+                            <tbody id="snap-body"><tr><td colspan="4" class="table-empty">Loading snapshots…</td></tr></tbody>
                         </table>
                     </div>
-                </div>
-            </section>
-
-            <!-- 5. Settings Tab -->
-            <section id="tab-settings" class="tab-content">
-                <div class="glass-panel">
+                    <ol class="snap-how" aria-label="How snapshots work">
+                        <li><svg class="icon" aria-hidden="true"><use href="#i-clock"/></svg><span><b>Every {{ config.snapshotIntervalSec }} s</b> the snapshot thread compares app.db with the newest snapshot.</span></li>
+                        <li><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg><span><b>If it changed,</b> it copies the file and keeps the copy only if it passes <code>PRAGMA quick_check</code>.</span></li>
+                        <li><svg class="icon" aria-hidden="true"><use href="#i-restore"/></svg><span><b>Restore</b> copies a snapshot over app.db and checks it at once, which closes a database incident.</span></li>
+                    </ol>
+                </section>
+                <section class="panel col-5" aria-labelledby="tx-title">
                     <div class="panel-header">
-                        <h2>Agent Settings</h2>
+                        <div>
+                            <h2 id="tx-title">Transactions</h2>
+                            <p class="panel-sub">Sample rows in the live database, newest first.</p>
+                        </div>
                     </div>
-                    <div class="form-container">
-                        {% if public_demo %}
-                        <div class="form-group">
-                            <label>AI incident reports</label>
-                            <p class="setting-value">{% if api_key_configured %}On: reports are written by Google Gemini.{% else %}Off: reports come from the built-in template.{% endif %}</p>
-                            <p class="form-help">On this public demo only the server owner can set the Gemini API key, through the <code>GOOGLE_API_KEY</code> environment variable. Visitors cannot change it.</p>
+                    <form class="tx-form" id="tx-form" novalidate>
+                        <label for="tx-amount">Amount</label>
+                        <div class="input-row">
+                            <input id="tx-amount" class="input" type="number" inputmode="decimal" min="0.01" max="1000000" step="0.01" value="25.00" required aria-describedby="tx-error">
+                            <button class="btn btn-primary btn-small" type="submit" id="btn-add-tx"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>Add</span></button>
                         </div>
-                        {% else %}
-                        <div class="form-group">
-                            <label for="settings-api-key">Google Gemini API Key</label>
-                            <p class="form-help">Enter your API key from Google AI Studio to have Gemini write incident reports. It is used by this server process until it restarts and is never written to disk; to keep it, put <code>GOOGLE_API_KEY</code> in your <code>.env</code> file.</p>
-                            <input type="password" id="settings-api-key" autocomplete="off" placeholder="{% if api_key_configured %}API Key Configured (••••••••){% else %}Enter your Gemini API key{% endif %}" value="" class="form-control">
+                        <p class="field-error" id="tx-error" aria-live="polite"></p>
+                    </form>
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead><tr><th scope="col">Time</th><th scope="col" class="num">Amount</th><th scope="col" class="hide-sm">ID</th></tr></thead>
+                            <tbody id="tx-body"><tr><td colspan="3" class="table-empty">Loading transactions…</td></tr></tbody>
+                        </table>
+                    </div>
+                    <p class="panel-foot" id="snapshot-foot"></p>
+                </section>
+            </div>
+        </section>
+
+        <!-- About -->
+        <section class="view" id="view-about" aria-labelledby="view-title" hidden>
+            <div class="grid">
+                <section class="panel prose col-8" aria-labelledby="why-title">
+                    <h2 id="why-title">Why it exists</h2>
+                    <p>Most monitoring stops at the alert: a graph turns red and a person takes over. DeepBell is a small lab for what comes next. It decides that something is really wrong, writes down what happened, and gets the data back to a known good state, on a target small enough to break on purpose: its own process.</p>
+
+                    <h2>Architecture</h2>
+                    <div class="arch">
+                        <div class="arch-lane">
+                            <p class="arch-label">Detect and report</p>
+                            <ol class="arch-flow">
+                                <li><b>Sampler thread</b><span>psutil reads CPU and RSS every {{ config.sampleIntervalSec }} s</span></li>
+                                <li><b>Metrics store</b><span>metrics.db (SQLite)</span></li>
+                                <li><b>Detector</b><span>baseline, Isolation Forest, consecutive-sample rule</span></li>
+                                <li><b>Incidents and reports</b><span>incident timeline, reports/*.md</span></li>
+                            </ol>
                         </div>
-                        <button class="btn btn-primary" onclick="saveApiKey()">Use this key</button>
-                        <p id="settings-feedback" class="feedback-msg"></p>
-                        {% endif %}
+                        <div class="arch-lane">
+                            <p class="arch-label">Recover</p>
+                            <ol class="arch-flow">
+                                <li><b>App database</b><span>app.db, sample transactions</span></li>
+                                <li><b>Snapshot thread</b><span>copies it every {{ config.snapshotIntervalSec }} s if it changed</span></li>
+                                <li><b>Snapshots</b><span>backups/*.db.bak, newest {{ config.snapshotsKeep }}</span></li>
+                                <li><b>Rollback</b><span>from the Time Machine, the guided demo or the startup check</span></li>
+                            </ol>
+                        </div>
+                        <div class="arch-lane">
+                            <p class="arch-label">Serve</p>
+                            <ol class="arch-flow arch-flow-2">
+                                <li><b>API</b><span>FastAPI in one uvicorn worker; all state lives in this process</span></li>
+                                <li><b>UI</b><span>Jinja template and plain JavaScript, polling /api/status every {{ config.sampleIntervalSec }} s</span></li>
+                            </ol>
+                        </div>
+                    </div>
+                    <p class="note">Everything runs in one Python process. The full step-by-step flows are in <a href="{{ repo_url }}/blob/main/docs/process-flows.md" target="_blank" rel="noopener">docs/process-flows.md</a>.</p>
+
+                    <h2>Design decisions</h2>
+                    <ul class="decisions">
+                        <li><b>Three gates before an incident.</b> A sample must be {{ config.cpuDeltaPct|int }} CPU points or {{ config.ramDeltaMb|int }} MB above the baseline (95th-percentile CPU and median memory of the last 150 normal samples), the Isolation Forest must call it an outlier, and it must happen {{ config.openAfter }} samples in a row; {{ config.closeAfter }} normal samples close it. On its own the forest flagged ordinary jitter, and a fixed threshold alone ignores what normal looks like for this process.</li>
+                        <li><b>Open incidents stay out of the baseline,</b> so a leak that is still held never becomes the new normal.</li>
+                        <li><b>Incident history lives in metrics.db, not app.db,</b> so corrupting or rolling back the application database never rewrites it.</li>
+                        <li><b>Caps and cooldowns for a public demo.</b> CPU spikes last at most {{ config.maxSpikeSec }} s, leaks are {{ config.leakStepMb }} MB a step and {{ config.leakLimitMb }} MB in total, every fault has a {{ config.cooldownSec }} s shared cooldown, leaked memory is freed after {{ (config.leakAutoReleaseSec // 60)|int }} minutes, and the crash fault and API-key form are off. The guided demo runs on the server, one run at a time, so a closed tab cannot leave a fault behind.</li>
+                        <li><b>A single worker by design.</b> Telemetry, open incidents, cooldowns and leaked memory are process state. Running more workers would need a shared store, which this lab does not need.</li>
+                        <li><b>Template reports by default.</b> They are free, deterministic and testable; Gemini (through LangChain) is optional and falls back to the template on any error. Every report is labelled with what wrote it.</li>
+                    </ul>
+                </section>
+                <div class="col-4 about-side">
+                    <section class="panel" aria-labelledby="stack-title">
+                        <h2 id="stack-title">Tech stack</h2>
+                        <dl class="stack">
+                            <div><dt>FastAPI, Uvicorn</dt><dd>the API and the single server process (Python 3.11 and 3.12)</dd></div>
+                            <div><dt>psutil</dt><dd>CPU and resident memory of the process</dd></div>
+                            <div><dt>scikit-learn, NumPy</dt><dd>Isolation Forest that confirms anomalies</dd></div>
+                            <div><dt>SQLite</dt><dd>app data, metrics, incident history and snapshots</dd></div>
+                            <div><dt>LangChain, Gemini</dt><dd>optional AI-written reports; a built-in template otherwise</dd></div>
+                            <div><dt>Jinja2, Chart.js, marked</dt><dd>the UI, with no build step</dd></div>
+                            <div><dt>pytest, ruff, GitHub Actions</dt><dd>tests, lint and CI</dd></div>
+                            <div><dt>Docker, Render</dt><dd>the container and the public demo</dd></div>
+                        </dl>
+                    </section>
+                    <section class="panel" aria-labelledby="limits-title">
+                        <h2 id="limits-title">Limitations</h2>
+                        <ul class="limits">
+                            <li>It monitors only itself, on two signals (CPU and resident memory). It is not a general monitoring tool.</li>
+                            <li>The minimum deviations are fixed, so smaller spikes and leaks are deliberately ignored.</li>
+                            <li>Snapshots are not point-in-time recovery: a rollback loses whatever changed since the snapshot.</li>
+                            <li>At runtime the rollback is manual (or part of the guided demo); it is automatic only in the startup check.</li>
+                            <li>There is no authentication. Public demo mode caps the damage, but any visitor can inject the capped faults.</li>
+                            <li>Times to detect and recover are measured on injected faults in this lab and say nothing about a production system.</li>
+                            <li>On the free hosting plan the disk is ephemeral, so history resets when the service restarts.</li>
+                        </ul>
+                        <p class="note">Source, tests and docs: <a href="{{ repo_url }}" target="_blank" rel="noopener">github.com/vishnuatgit/DeepBell</a></p>
+                    </section>
+                </div>
+            </div>
+        </section>
+
+        {% if not public_demo %}
+        <!-- Settings (local runs only) -->
+        <section class="view" id="view-settings" aria-labelledby="view-title" hidden>
+            <section class="panel narrow" aria-labelledby="key-title">
+                <div class="panel-header">
+                    <div>
+                        <h2 id="key-title">AI incident reports</h2>
+                        <p class="panel-sub">Currently: {% if api_key_configured %}a Gemini key is configured, so reports are written by Gemini (template as fallback).{% else %}no key, so reports come from the built-in template.{% endif %}</p>
                     </div>
                 </div>
+                <form id="key-form" class="stack-form" novalidate>
+                    <label for="settings-api-key">Google Gemini API key</label>
+                    <p class="note">Used by this server process until it restarts and never written to disk. To keep it, put <code>GOOGLE_API_KEY</code> in your <code>.env</code> file.</p>
+                    <input type="password" id="settings-api-key" class="input" autocomplete="off" placeholder="{% if api_key_configured %}A key is configured{% else %}Paste your key{% endif %}" aria-describedby="settings-feedback">
+                    <div><button class="btn btn-primary" type="submit" id="key-save"><span>Use this key</span></button></div>
+                    <p class="feedback" id="settings-feedback" role="status"></p>
+                </form>
             </section>
-
-            <footer class="page-footer">
-                <a href="{{ repo_url }}" target="_blank" rel="noopener">Source on GitHub</a>
-                <span aria-hidden="true">&middot;</span>
-                <a href="{{ author_url }}" target="_blank" rel="noopener">Built by Vishnu Jayanth</a>
-                <span aria-hidden="true">&middot;</span>
-                <button class="intro-link" onclick="showIntro()">How this demo works</button>
-            </footer>
-        </main>
-    </div>
-
-    <script>
-        const CONFIG = {{ config | tojson }};
-        const INITIAL_REPORT = {{ report | tojson }};
-        const TAB_TITLES = {
-            overview: 'Overview',
-            metrics: 'Live Telemetry',
-            chaos: 'Chaos Lab',
-            backups: 'Time Machine',
-            settings: 'Settings',
-        };
-        const INTRO_KEY = 'deepbell.introDismissed';
-        let currentTab = 'overview';
-        let lastStatus = null;
-        let eventSeq = 0;
-        let shownReport = null;
-        let lastSnapshotName = null;
-        let lastDbOk = true;
-        let serverOffsetMs = 0;
-        let telemetryChart = null;
-        let chaosChart = null;
-
-        // --- Helpers ---
-
-        function esc(value) {
-            return String(value ?? '').replace(/[&<>"']/g, c => ({
-                '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-            }[c]));
-        }
-
-        function parseTime(iso) {
-            const d = new Date(iso);
-            return isNaN(d) ? null : d;
-        }
-
-        // Timestamps arrive in UTC (ISO-8601); show them in the viewer's time zone.
-        function fmtTime(iso) {
-            const d = parseTime(iso);
-            return d ? d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) : iso;
-        }
-
-        function fmtDateTime(iso) {
-            const d = parseTime(iso);
-            return d ? d.toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' }) : iso;
-        }
-
-        function ago(iso) {
-            const d = parseTime(iso);
-            if (!d) return '';
-            const s = Math.max(0, Math.round((Date.now() + serverOffsetMs - d.getTime()) / 1000));
-            if (s < 60) return `${s} s ago`;
-            if (s < 3600) return `${Math.floor(s / 60)} min ago`;
-            return `${Math.floor(s / 3600)} h ago`;
-        }
-
-        async function api(method, url, form) {
-            try {
-                const res = await fetch(url, { method, body: form });
-                let data = null;
-                try { data = await res.json(); } catch (e) { data = null; }
-                const detail = data && (typeof data.detail === 'string' ? data.detail : data.message);
-                return { ok: res.ok, status: res.status, data, detail: detail || `Request failed (${res.status}).` };
-            } catch (err) {
-                return { ok: false, status: 0, data: null, detail: 'Could not reach the server.' };
-            }
-        }
-
-        function showToast(message, type = 'info', timeout = 6000) {
-            const stack = document.getElementById('toasts');
-            const toast = document.createElement('div');
-            toast.className = `toast toast-${type}`;
-            toast.textContent = message;
-            stack.appendChild(toast);
-            setTimeout(() => toast.classList.add('leaving'), timeout);
-            setTimeout(() => toast.remove(), timeout + 400);
-            while (stack.children.length > 4) stack.removeChild(stack.firstChild);
-        }
-
-        function confirmAction({ title, body, confirmLabel = 'Confirm', danger = false }) {
-            const modal = document.getElementById('confirm-modal');
-            const ok = document.getElementById('confirm-ok');
-            const cancel = document.getElementById('confirm-cancel');
-            document.getElementById('confirm-title').textContent = title;
-            document.getElementById('confirm-body').textContent = body;
-            ok.textContent = confirmLabel;
-            ok.classList.toggle('btn-danger', danger);
-            modal.hidden = false;
-            ok.focus();
-            return new Promise(resolve => {
-                const done = value => {
-                    modal.hidden = true;
-                    ok.onclick = cancel.onclick = modal.onclick = document.onkeydown = null;
-                    resolve(value);
-                };
-                ok.onclick = () => done(true);
-                cancel.onclick = () => done(false);
-                modal.onclick = e => { if (e.target === modal) done(false); };
-                document.onkeydown = e => { if (e.key === 'Escape') done(false); };
-            });
-        }
-
-        // --- Tabs ---
-
-        function switchTab(tabId) {
-            if (!TAB_TITLES[tabId]) tabId = 'overview';
-            currentTab = tabId;
-            document.querySelectorAll('.nav-item').forEach(item => {
-                const active = item.dataset.tab === tabId;
-                item.classList.toggle('active', active);
-                if (active) item.setAttribute('aria-current', 'page');
-                else item.removeAttribute('aria-current');
-            });
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === `tab-${tabId}`));
-            document.getElementById('page-title').textContent = TAB_TITLES[tabId];
-            document.title = tabId === 'overview' ? 'DeepBell SRE Cockpit' : `${TAB_TITLES[tabId]} · DeepBell SRE Cockpit`;
-            try { history.replaceState(null, '', `#${tabId}`); } catch (e) { /* file:// or sandboxed */ }
-            document.querySelector('.main-content').scrollTop = 0;
-            window.scrollTo(0, 0);
-
-            if (tabId === 'backups') loadBackups();
-            if (tabId === 'overview') loadTransactions();
-            if (tabId === 'metrics' || tabId === 'chaos') {
-                loadTelemetry();
-                setTimeout(() => [telemetryChart, chaosChart].forEach(c => c && c.resize()), 50);
-            }
-        }
-
-        // --- Intro card ---
-
-        function dismissIntro() {
-            document.getElementById('intro-wrap').hidden = true;
-            try { localStorage.setItem(INTRO_KEY, '1'); } catch (e) { /* storage unavailable */ }
-        }
-
-        function showIntro() {
-            switchTab('overview');
-            const wrap = document.getElementById('intro-wrap');
-            wrap.hidden = false;
-            try { localStorage.removeItem(INTRO_KEY); } catch (e) { /* storage unavailable */ }
-            wrap.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        // --- Server events console ---
-
-        function renderEvents(events) {
-            for (const id of ['console-logs', 'chaos-logs']) {
-                const box = document.getElementById(id);
-                for (const e of events) {
-                    const li = document.createElement('li');
-                    li.className = `log-${e.level}`;
-                    li.textContent = `[${fmtTime(e.time)}] ${e.message}`;
-                    box.insertBefore(li, box.firstChild);
-                }
-                while (box.children.length > 40) box.removeChild(box.lastChild);
-            }
-        }
-
-        // --- Status polling ---
-
-        function setBar(bar, pct, level) {
-            bar.style.width = `${Math.max(0, Math.min(pct, 100))}%`;
-            bar.dataset.level = level;
-        }
-
-        function renderStatus(data) {
-            lastStatus = data;
-            serverOffsetMs = (parseTime(data.server_time)?.getTime() ?? Date.now()) - Date.now();
-            const base = data.baseline;
-
-            // Header cards
-            document.getElementById('header-cpu').textContent = data.cpu.toFixed(1);
-            document.getElementById('header-ram').textContent = data.ram.toFixed(1);
-            setBar(document.getElementById('cpu-bar'), data.cpu, data.cpu > 80 ? 'high' : data.cpu > 50 ? 'warn' : 'ok');
-            document.getElementById('cpu-note').textContent = data.cpu_capacity < 1
-                ? `of the ${data.cpu_capacity} vCPU quota` : 'of one core';
-            const ramNote = document.getElementById('ram-note');
-            if (base) {
-                // Colours are relative to the learned baseline, not fixed thresholds.
-                const over = data.ram - base.ram;
-                const scale = base.ram + CONFIG.leakLimitMb + CONFIG.ramDeltaMb;
-                setBar(document.getElementById('ram-bar'), (data.ram / scale) * 100,
-                    over >= CONFIG.ramDeltaMb ? 'high' : over >= CONFIG.ramDeltaMb / 2 ? 'warn' : 'ok');
-                ramNote.textContent = `baseline ${base.ram.toFixed(0)} MB`;
-            } else {
-                setBar(document.getElementById('ram-bar'), 0, 'ok');
-                ramNote.textContent = 'learning baseline';
-            }
-
-            // Health indicators
-            const dot = document.getElementById('health-dot');
-            const text = document.getElementById('health-text');
-            const pill = document.getElementById('chaos-health');
-            const colour = { healthy: 'green', warming: 'yellow', anomalous: 'red', degraded: 'red' }[data.state] || 'yellow';
-            dot.className = `pulse-dot ${colour}`;
-            const shortLabel = s => (s.match(/\((.+)\)/) || [, s])[1];
-            const label = data.incidents.length ? `Incident: ${shortLabel(data.incidents[0].label)}`
-                : data.state === 'warming' ? 'Learning baseline' : 'System Normal';
-            const extra = data.incidents.length > 1 ? ` +${data.incidents.length - 1}` : '';
-            text.textContent = label + extra;
-            text.title = data.status;
-            pill.textContent = label + extra;
-            pill.dataset.state = colour;
-
-            // Watchdog card
-            const agentState = document.getElementById('agent-state');
-            const agentSub = document.getElementById('agent-subtext');
-            if (data.is_generating_rca) {
-                agentState.textContent = 'Writing incident report...';
-                agentSub.textContent = data.api_key_configured ? 'Gemini is analysing the recent telemetry.' : 'Building a template report from the recent telemetry.';
-            } else if (data.incidents.length) {
-                const inc = data.incidents[0];
-                agentState.textContent = `Incident: ${shortLabel(inc.label)}`;
-                agentSub.textContent = `${inc.detail} Since ${fmtTime(inc.opened_at)}.`;
-            } else if (data.state === 'warming') {
-                agentState.textContent = 'Learning baseline';
-                agentSub.textContent = 'Collecting samples before scoring them (about 30 s).';
-            } else {
-                agentState.textContent = 'Watching';
-                agentSub.textContent = 'Sampling CPU and memory every 2 s. No open incidents.';
-            }
-            const source = document.getElementById('baseline-source');
-            source.textContent = !base ? 'learning...'
-                : base.source === 'live' ? `${base.samples} live samples`
-                : `warm-up, live ${Math.min(base.live_samples, base.live_needed)}/${base.live_needed}`;
-            source.title = base ? `Fitted ${fmtDateTime(base.fitted_at)}` : '';
-            document.getElementById('baseline-cpu').textContent = base ? `${(base.cpu + CONFIG.cpuDeltaPct).toFixed(1)} %` : '--';
-            document.getElementById('baseline-ram').textContent = base ? `${(base.ram + CONFIG.ramDeltaMb).toFixed(0)} MB` : '--';
-
-            // Report button
-            const rcaBtn = document.getElementById('btn-rca-gen');
-            const rcaWait = data.faults.report.cooldown;
-            rcaBtn.disabled = data.is_generating_rca || rcaWait > 0;
-            rcaBtn.textContent = data.is_generating_rca ? 'Generating...' : rcaWait > 0 ? `Generate again in ${rcaWait} s` : 'Generate report now';
-
-            renderFaults(data.faults);
-            renderDatabase(data.database);
-
-            const snap = data.latest_snapshot;
-            document.getElementById('snapshot-foot').textContent = snap
-                ? `Last snapshot ${fmtTime(snap.timestamp)} (${ago(snap.timestamp)}). Snapshots are taken every ${CONFIG.snapshotIntervalSec} s when the data changed.`
-                : 'No snapshot yet.';
-            if (snap?.filename !== lastSnapshotName) {
-                lastSnapshotName = snap?.filename ?? null;
-                if (currentTab === 'backups') loadBackups();
-            }
-            if (data.latest_report !== (shownReport?.filename ?? null)) loadReport();
-        }
-
-        function renderFaults(f) {
-            const cooldown = (name, wait, idle) => {
-                const btn = document.getElementById(`btn-${name}`);
-                const state = document.getElementById(`state-${name}`);
-                if (!btn) return;
-                btn.disabled = wait > 0 || !!idle.disabled;
-                btn.textContent = wait > 0 ? `Cooling down · ${wait} s` : idle.label;
-                if (state) state.textContent = wait > 0 ? '' : (idle.note || '');
-            };
-            cooldown('cpu_spike', f.cpu_spike.cooldown, { label: 'Inject spike' });
-            const leak = f.memory_leak;
-            const full = leak.held_mb + leak.step_mb > leak.limit_mb;
-            cooldown('memory_leak', leak.cooldown, {
-                label: full ? 'Limit reached' : `Inject ${leak.step_mb} MB leak`, disabled: full,
-                note: full ? 'Release memory first' : '',
-            });
-            document.getElementById('leak-fill').style.width = `${(leak.held_mb / leak.limit_mb) * 100}%`;
-            document.getElementById('leak-held').textContent = `${leak.held_mb} of ${leak.limit_mb} MB held`;
-            document.getElementById('btn-release').disabled = leak.held_mb === 0;
-            cooldown('corrupt_db', f.corrupt_db.cooldown, { label: 'Corrupt database' });
-        }
-
-        function renderDatabase(db) {
-            document.querySelectorAll('[data-db-alert]').forEach(el => { el.hidden = db.ok; });
-            document.querySelectorAll('[data-db-error]').forEach(el => { el.textContent = db.error || ''; });
-            document.getElementById('btn-add-tx').disabled = !db.ok;
-            if (db.ok !== lastDbOk) {
-                lastDbOk = db.ok;
-                loadTransactions();
-            }
-        }
-
-        async function pollStatus() {
-            let data;
-            try {
-                const res = await fetch(`/api/status?events_after=${eventSeq}`);
-                if (!res.ok) throw new Error(res.status);
-                data = await res.json();
-            } catch (err) {
-                const dot = document.getElementById('health-dot');
-                dot.className = 'pulse-dot red';
-                document.getElementById('health-text').textContent = 'Offline / Reconnecting';
-                showOfflineOverlay();
-                return;
-            }
-            if (data.event_seq < eventSeq) {
-                // The server restarted and its event counter with it.
-                eventSeq = 0;
-                return pollStatus();
-            }
-            eventSeq = data.event_seq;
-            renderEvents(data.events);
-            renderStatus(data);
-        }
-
-        // --- Charts ---
-
-        const RED = '#ef4444';
-        const GREY = '#64748b';
-        const isAnomalous = (s, word = '') => (s || '').startsWith('Anomalous') && s.includes(word);
-        const isSynthetic = s => (s || '').startsWith('Warm-up');
-
-        function makeChart(canvasId) {
-            if (typeof Chart === 'undefined') return null;
-            const statusAt = (ctx, i) => (ctx.chart.$statuses || [])[i];
-            const xTicks = canvasId === 'chaosChart' ? 3 : window.innerWidth < 700 ? 4 : 8;
-            const dataset = (label, colour, axis, kind) => ({
-                label,
-                data: [],
-                yAxisID: axis,
-                borderColor: colour,
-                backgroundColor: colour,
-                borderWidth: 2,
-                tension: 0.3,
-                pointRadius: ctx => isAnomalous(statusAt(ctx, ctx.dataIndex), kind) ? 4 : 0,
-                pointHoverRadius: 5,
-                pointBackgroundColor: ctx => isAnomalous(statusAt(ctx, ctx.dataIndex), kind) ? RED : colour,
-                pointBorderColor: ctx => isAnomalous(statusAt(ctx, ctx.dataIndex), kind) ? RED : colour,
-                segment: {
-                    borderColor: ctx => isSynthetic(statusAt(ctx, ctx.p1DataIndex)) ? GREY : undefined,
-                    borderDash: ctx => isSynthetic(statusAt(ctx, ctx.p1DataIndex)) ? [4, 4] : undefined,
-                },
-            });
-            return new Chart(document.getElementById(canvasId), {
-                type: 'line',
-                data: { labels: [], datasets: [dataset('CPU (%)', '#00f2fe', 'y-cpu', 'CPU'), dataset('RAM (MB)', '#a855f7', 'y-ram', 'Memory')] },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    animation: false,
-                    interaction: { mode: 'index', intersect: false },
-                    scales: {
-                        x: {
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#94a3b8', maxTicksLimit: xTicks, maxRotation: 0, autoSkipPadding: 12, font: { family: 'Plus Jakarta Sans' } }
-                        },
-                        'y-cpu': {
-                            type: 'linear', position: 'left', min: 0, suggestedMax: 100,
-                            grid: { color: 'rgba(255, 255, 255, 0.05)' },
-                            ticks: { color: '#00f2fe', maxTicksLimit: 6 }
-                        },
-                        'y-ram': {
-                            type: 'linear', position: 'right', grace: '15%',
-                            grid: { drawOnChartArea: false },
-                            ticks: { color: '#c084fc', maxTicksLimit: 6 }
-                        }
-                    },
-                    plugins: {
-                        legend: { labels: { color: '#f8fafc', boxWidth: 14, font: { family: 'Plus Jakarta Sans', weight: 'bold' } } },
-                        tooltip: { callbacks: { footer: items => items.length ? statusAt(items[0], items[0].dataIndex) : '' } }
-                    }
-                }
-            });
-        }
-
-        function updateChart(chart, rows) {
-            if (!chart) return;
-            chart.$statuses = rows.map(m => m.status);
-            chart.data.labels = rows.map(m => fmtTime(m.timestamp));
-            chart.data.datasets[0].data = rows.map(m => m.cpu);
-            chart.data.datasets[1].data = rows.map(m => m.ram);
-            chart.update('none');
-        }
-
-        function badgeClass(status) {
-            if (isAnomalous(status)) return 'red';
-            if (status === 'Normal') return 'green';
-            return 'grey';
-        }
-
-        async function loadTelemetry() {
-            const r = await api('GET', '/api/metrics?limit=60');
-            if (!r.ok || !Array.isArray(r.data)) return;
-            const data = r.data;
-            const chartRows = [...data].reverse(); // oldest first, left to right
-            updateChart(telemetryChart, chartRows);
-            updateChart(chaosChart, chartRows);
-
-            const tbody = document.getElementById('metrics-table-body');
-            if (data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="table-empty">No telemetry recorded yet.</td></tr>';
-                return;
-            }
-            tbody.innerHTML = data.slice(0, 15).map(m => `
-                <tr>
-                    <td>${esc(fmtTime(m.timestamp))}</td>
-                    <td class="num">${m.cpu.toFixed(1)}%</td>
-                    <td class="num">${m.ram.toFixed(1)} MB</td>
-                    <td><span class="table-badge ${badgeClass(m.status)}">${esc(m.status)}</span></td>
-                </tr>`).join('');
-        }
-
-        // --- Incident report ---
-
-        // Replace ISO-8601 UTC timestamps in rendered text with the viewer's local time.
-        function localizeTimes(root) {
-            const pattern = /\b\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z\b/g;
-            const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-            const nodes = [];
-            while (walker.nextNode()) nodes.push(walker.currentNode);
-            for (const node of nodes) {
-                if (pattern.test(node.nodeValue)) node.nodeValue = node.nodeValue.replace(pattern, fmtDateTime);
-                pattern.lastIndex = 0;
-            }
-        }
-
-        function reportTitle(report) {
-            const line = (report.content.match(/^#\s+(.+)$/m) || [])[1];
-            return (line || report.filename).replace(/^Incident Report:\s*/, '');
-        }
-
-        function renderReport(report) {
-            shownReport = report;
-            const box = document.getElementById('report-container');
-            const meta = document.getElementById('report-meta');
-            const teaser = document.getElementById('chaos-report-title');
-            if (!report) {
-                box.innerHTML = '<p class="empty-state">No incident reports yet. Inject a fault in the Chaos Lab to create one.</p>';
-                meta.textContent = '';
-                teaser.textContent = 'None yet.';
-                return;
-            }
-            if (window.marked) {
-                box.classList.remove('raw');
-                box.innerHTML = marked.parse(report.content);
-            } else {
-                box.classList.add('raw');
-                box.textContent = report.content;
-            }
-            localizeTimes(box);
-            meta.textContent = report.generated_at ? `Written ${fmtDateTime(report.generated_at)} (${ago(report.generated_at)})` : report.filename;
-            teaser.textContent = `${reportTitle(report)} · ${report.generated_at ? fmtTime(report.generated_at) : ''}`;
-        }
-
-        async function loadReport() {
-            const r = await api('GET', '/api/reports/latest');
-            if (r.status === 404) return renderReport(null);
-            if (!r.ok) return;
-            const isNew = shownReport && r.data.filename !== shownReport.filename;
-            renderReport(r.data);
-            if (isNew) showToast(`New incident report: ${reportTitle(r.data)}`, 'success');
-        }
-
-        async function triggerManualRCA() {
-            const r = await api('POST', '/api/rca/generate');
-            if (r.ok) showToast(r.data.status === 'busy' ? r.data.message : 'Writing a report from the latest telemetry...', 'info');
-            else showToast(r.detail, r.status === 429 ? 'info' : 'error');
-            pollStatus();
-        }
-
-        // --- Transactions ---
-
-        async function loadTransactions() {
-            const tbody = document.getElementById('tx-body');
-            const r = await api('GET', '/transactions');
-            if (!r.ok) {
-                tbody.innerHTML = `<tr><td colspan="3" class="table-error">${esc(r.detail)}</td></tr>`;
-                return;
-            }
-            if (!r.data.length) {
-                tbody.innerHTML = '<tr><td colspan="3" class="table-empty">No transactions. Add one above.</td></tr>';
-                return;
-            }
-            tbody.innerHTML = r.data.map(t => `
-                <tr>
-                    <td>${esc(fmtDateTime(t.timestamp))}</td>
-                    <td class="num">${Number(t.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                    <td class="mono hide-sm" title="${esc(t.id)}">${esc(String(t.id).slice(0, 8))}</td>
-                </tr>`).join('');
-        }
-
-        async function addTransaction(event) {
-            event.preventDefault();
-            const input = document.getElementById('tx-amount');
-            const r = await api('POST', `/transaction?amount=${encodeURIComponent(input.value)}`);
-            if (r.ok) {
-                showToast(`Transaction of ${r.data.amount.toFixed(2)} added. The next snapshot will include it.`, 'success');
-                input.value = (5 + Math.random() * 495).toFixed(2);
-            } else {
-                showToast(r.detail, 'error');
-            }
-            loadTransactions();
-        }
-
-        // --- Time Machine ---
-
-        async function loadBackups() {
-            const tbody = document.getElementById('backups-table-body');
-            const r = await api('GET', '/api/backups');
-            if (!r.ok) return;
-            if (r.data.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="table-empty">No snapshots yet. The first one is taken when the app starts.</td></tr>';
-                return;
-            }
-            tbody.innerHTML = r.data.map((b, i) => `
-                <tr>
-                    <td>${esc(fmtDateTime(b.timestamp))}<span class="cell-sub">${esc(ago(b.timestamp))}${i === 0 ? ' · newest' : ''}</span></td>
-                    <td class="num hide-sm">${b.size_kb} KB</td>
-                    <td class="mono hide-sm">${esc(b.filename)}</td>
-                    <td><button class="btn btn-small" data-snapshot="${esc(b.filename)}" data-taken="${esc(b.timestamp)}">Restore</button></td>
-                </tr>`).join('');
-            tbody.querySelectorAll('button[data-snapshot]').forEach(btn => {
-                btn.addEventListener('click', () => rollbackToBackup(btn.dataset.snapshot, btn.dataset.taken));
-            });
-        }
-
-        async function rollbackToBackup(filename, taken) {
-            const ok = await confirmAction({
-                title: 'Roll back the database?',
-                body: `The database will be restored to the snapshot taken at ${fmtDateTime(taken)}. Transactions added after that are lost.`
-                    + (CONFIG.publicDemo ? ' This is a shared demo, so everyone sees the change.' : ''),
-                confirmLabel: 'Restore snapshot',
-            });
-            if (!ok) return;
-            const form = new FormData();
-            form.append('filename', filename);
-            const r = await api('POST', '/api/rollback', form);
-            if (r.ok) showToast(`Database restored to the snapshot from ${fmtTime(taken)}.`, 'success');
-            else showToast(`Rollback failed: ${r.detail}`, 'error');
-            loadBackups();
-            loadTransactions();
-            pollStatus();
-        }
-
-        // --- Chaos Lab ---
-
-        const SHARED_NOTE = CONFIG.publicDemo ? ' Everyone viewing this demo will see it.' : '';
-        const FAULTS = {
-            cpu_spike: {
-                url: () => `/fault/cpu_spike?duration_sec=${CONFIG.maxSpikeSec}`,
-                title: 'Inject a CPU spike?',
-                body: () => `A busy loop will run on this server for ${CONFIG.maxSpikeSec} seconds.${SHARED_NOTE}`,
-                confirm: 'Inject spike',
-                done: 'CPU spike injected. Watch the chart: the watchdog should open an incident within a few seconds.',
-            },
-            memory_leak: {
-                url: () => `/fault/memory_leak?size_mb=${CONFIG.leakStepMb}`,
-                title: 'Leak memory?',
-                body: () => `The server will allocate ${CONFIG.leakStepMb} MB and hold it until someone releases it. The incident stays open while the memory is held.${SHARED_NOTE}`,
-                confirm: 'Leak memory',
-                done: 'Memory leaked. The incident stays open until you release it.',
-            },
-            corrupt_db: {
-                url: () => '/fault/corrupt_db',
-                title: 'Corrupt the database?',
-                body: () => `Garbage will be written over the SQLite file header. Transactions stop working until the database is rolled back in the Time Machine.${SHARED_NOTE}`,
-                confirm: 'Corrupt database',
-                done: 'Database corrupted. Roll it back in the Time Machine to recover.',
-            },
-            fatal_crash: {
-                url: () => '/fault/fatal_crash',
-                title: 'Crash the server?',
-                body: () => 'The process exits immediately. If it runs under run_all.py, the supervisor restarts it after 2 seconds.',
-                confirm: 'Crash server',
-                done: 'Server is terminating. The dashboard will reconnect when it is back.',
-            },
-        };
-
-        async function injectFault(kind) {
-            const f = FAULTS[kind];
-            const ok = await confirmAction({ title: f.title, body: f.body(), confirmLabel: f.confirm, danger: true });
-            if (!ok) return;
-            const r = await api('POST', f.url());
-            if (r.ok) showToast(f.done, 'warn', 8000);
-            else showToast(r.detail, r.status === 429 || r.status === 409 ? 'info' : 'error');
-            pollStatus();
-            loadTelemetry();
-        }
-
-        async function releaseMemory() {
-            const r = await api('POST', '/fault/memory_release');
-            if (r.ok) showToast(`Released ${r.data.released_mb} MB. The incident closes once memory is back near the baseline.`, 'success');
-            else showToast(r.detail, 'error');
-            pollStatus();
-        }
-
-        // --- Settings (local runs only) ---
-
-        async function saveApiKey() {
-            const input = document.getElementById('settings-api-key');
-            const feedback = document.getElementById('settings-feedback');
-            if (!input.value.trim()) {
-                feedback.textContent = 'Key cannot be empty.';
-                feedback.className = 'feedback-msg red';
-                return;
-            }
-            const form = new FormData();
-            form.append('api_key', input.value);
-            feedback.textContent = 'Saving API key...';
-            feedback.className = 'feedback-msg';
-            const r = await api('POST', '/api/settings/apikey', form);
-            feedback.textContent = r.ok ? r.data.message : r.detail;
-            feedback.className = `feedback-msg ${r.ok ? 'green' : 'red'}`;
-            if (r.ok) input.value = '';
-        }
-
-        // --- Offline overlay ---
-
-        let isOffline = false;
-
-        function showOfflineOverlay() {
-            if (isOffline) return;
-            isOffline = true;
-            document.getElementById('offline-overlay').classList.add('active');
-            let attempts = 0;
-            const timer = setInterval(async () => {
-                attempts++;
-                document.getElementById('offline-status').textContent = `Reconnect attempt ${attempts}...`;
-                try {
-                    const res = await fetch('/healthz');
-                    if (!res.ok) return;
-                } catch (e) {
-                    return;
-                }
-                clearInterval(timer);
-                isOffline = false;
-                document.getElementById('offline-overlay').classList.remove('active');
-                showToast('Connection restored.', 'success');
-                refreshAll();
-            }, 2000);
-        }
-
-        // --- Initial setup ---
-
-        function refreshAll() {
-            pollStatus();
-            loadTelemetry();
-            loadTransactions();
-            if (currentTab === 'backups') loadBackups();
-        }
-
-        document.addEventListener('DOMContentLoaded', () => {
-            if (window.marked) {
-                // Reports are Markdown; never let raw HTML in them reach the page.
-                marked.use({ renderer: { html: html => esc(html) } });
-            }
-            try {
-                if (localStorage.getItem(INTRO_KEY)) document.getElementById('intro-wrap').hidden = true;
-            } catch (e) { /* storage unavailable */ }
-            document.querySelectorAll('.nav-item').forEach(item => item.addEventListener('click', () => switchTab(item.dataset.tab)));
-
-            if (INITIAL_REPORT) renderReport(INITIAL_REPORT);
-            else renderReport(null);
-            telemetryChart = makeChart('telemetryChart');
-            chaosChart = makeChart('chaosChart');
-
-            switchTab((location.hash || '#overview').slice(1));
-            refreshAll();
-
-            // Poll only while the tab is visible, so idle visitors cost the server nothing.
-            setInterval(() => { if (!document.hidden && !isOffline) pollStatus(); }, 2000);
-            setInterval(() => {
-                if (document.hidden || isOffline) return;
-                if (currentTab === 'metrics' || currentTab === 'chaos') loadTelemetry();
-            }, 4000);
-            setInterval(() => {
-                if (document.hidden || isOffline) return;
-                if (currentTab === 'overview') loadTransactions();
-                if (currentTab === 'backups') loadBackups();
-            }, 10000);
-            document.addEventListener('visibilitychange', () => { if (!document.hidden && !isOffline) refreshAll(); });
-        });
-    </script>
+        </section>
+        {% endif %}
+
+        <footer class="page-footer">
+            <a href="{{ repo_url }}" target="_blank" rel="noopener">Source on GitHub</a>
+            <span aria-hidden="true">·</span>
+            <a href="{{ author_url }}" target="_blank" rel="noopener">Built by Vishnu Jayanth</a>
+            <span aria-hidden="true">·</span>
+            <span>{% if public_demo %}Public demo: shared instance, data resets on restart.{% else %}Local run.{% endif %}</span>
+        </footer>
+    </main>
+</div>
+
+<dialog class="modal" id="confirm" aria-labelledby="confirm-title" aria-describedby="confirm-body">
+    <form method="dialog">
+        <span class="modal-icon" id="confirm-icon" aria-hidden="true"><svg class="icon"><use href="#i-incident"/></svg></span>
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-body"></p>
+        <div class="modal-actions">
+            <button class="btn btn-secondary" value="cancel" id="confirm-cancel">Cancel</button>
+            <button class="btn btn-primary" value="ok" id="confirm-ok">Confirm</button>
+        </div>
+    </form>
+</dialog>
+
+<div class="toast-stack" id="toasts" aria-live="polite"></div>
+<p class="sr-only" id="sr-announce" aria-live="polite"></p>
+
+<script id="deepbell-config" type="application/json">{{ config | tojson }}</script>
+<script id="deepbell-report" type="application/json">{{ report | tojson }}</script>
 </body>
 </html>

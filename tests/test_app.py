@@ -56,13 +56,14 @@ def test_template_report_for_database_incident():
     )
     assert report.startswith("# Incident Report: Degraded (Database Error)")
     assert "file is not a database" in report
-    assert "Time Machine" in report
+    assert "Roll back to the newest good snapshot" in report
     # Works before any telemetry exists, too.
     assert "## Likely cause" in main.build_template_report([], "now", incident="Degraded (X)")
-    # Flagged samples keep their own classification in the summary (here a CPU spike).
+    # Samples flagged for another fault are named as such, never as this fault's own.
     report = main.build_template_report(ROWS, "now", incident="Degraded (Database Error)")
     assert report.startswith("# Incident Report: Degraded (Database Error)")
-    assert "latest classification is **Anomalous (CPU Spike)**" in report
+    assert "latest classification" not in report
+    assert "belong to another fault (cpu spike)" in report
 
 
 def test_report_without_key_never_calls_llm(client, monkeypatch):
@@ -295,7 +296,9 @@ def test_public_demo_locks_settings_and_crash(client, monkeypatch):
 
     html = client.get("/").text
     assert 'id="settings-api-key"' not in html
-    assert "How this demo works" in html
+    assert 'href="#settings"' not in html
+    assert "How it works" in html
+    assert "shared instance" in html
     status = client.get("/api/status").json()
     assert status["public_demo"] is True
     assert status["faults"]["fatal_crash"]["enabled"] is False
