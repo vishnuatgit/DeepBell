@@ -172,7 +172,28 @@ Default paths are relative to the project root. The Docker image sets the three 
 ```
 DeepBell/
 ├── target_app/
-│   ├── main.py              # FastAPI app: watchdog, incidents, reports, snapshots, guided demo, API
+│   ├── main.py              # Creates the FastAPI app and includes the routers (main:app)
+│   ├── deepbell/            # The application package
+│   │   ├── config.py        # Paths, environment variables, thresholds, caps and labels
+│   │   ├── runtime.py       # Process-wide state: locks, the detector, open incidents, demo run
+│   │   ├── timeutil.py      # UTC helpers (utcnow, iso, parse_utc)
+│   │   ├── db.py            # SQLite connections, schema and the app.db health check
+│   │   ├── snapshots.py     # Take, check and restore app.db snapshots; heal at startup
+│   │   ├── detection.py     # Detector: baseline check confirmed by an Isolation Forest
+│   │   ├── telemetry.py     # CPU quota, scoring samples, warm-up seed, pruning
+│   │   ├── incident_store.py # Incident rows and timelines in metrics.db
+│   │   ├── incidents.py     # Open (de-duplicated), time and close incidents
+│   │   ├── reports.py       # Template reports and the report files
+│   │   ├── llm.py           # Gemini via LangChain: key lookup, lazy load, AI reports
+│   │   ├── rca.py           # Writes a report in the background (Gemini or template)
+│   │   ├── chaos.py         # Chaos Lab faults with caps and shared cooldowns
+│   │   ├── demo.py          # The guided demo scenario
+│   │   ├── overview.py      # Status strip, live pipeline and incident stats
+│   │   ├── eventlog.py      # The shared event console
+│   │   ├── workers.py       # Snapshot and watchdog threads
+│   │   ├── startup.py       # Startup checks, demo seed data, starts the workers
+│   │   └── routes/          # One APIRouter per area: pages, transactions, status,
+│   │                        #   incidents, reports, snapshots, settings, demo, chaos
 │   ├── requirements.txt     # Pinned runtime dependencies
 │   ├── templates/index.html # The dashboard markup (one page, seven views)
 │   └── static/              # app.js (behaviour), styles.css (dark and light themes), favicon.svg

@@ -7,7 +7,7 @@ select = ["E", "F", "W", "I", "B", "UP"]
 ignore = ["E501", "B904"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["main"]
+known-first-party = ["main", "deepbell"]
 
 [tool.pytest.ini_options]
 pythonpath = ["target_app"]

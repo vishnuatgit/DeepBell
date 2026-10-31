@@ -7,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-import main
+from deepbell import config, db, detection, eventlog, rca, snapshots, telemetry
 
 T0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
 
@@ -22,7 +22,7 @@ class Clock:
         self.t = 0.0
 
     def tick(self):
-        self.t += main.SAMPLE_INTERVAL_SEC
+        self.t += config.SAMPLE_INTERVAL_SEC
         return self.t
 
 
@@ -37,7 +37,7 @@ def feed(detector, samples, clock):
 
 
 def trained_detector(clock, rng, n=40):
-    det = main.Detector()
+    det = detection.Detector()
     feed(det, [idle(rng) for _ in range(n)], clock)
     assert det.baseline is not None
     return det
@@ -45,7 +45,7 @@ def trained_detector(clock, rng, n=40):
 
 def test_jitter_never_opens_an_incident():
     rng, clock = random.Random(1), Clock()
-    det = main.Detector()
+    det = detection.Detector()
     samples = [idle(rng) for _ in range(400)]
     # Occasional single bumps (a page load, a report) are jitter too.
     for i in range(20, 400, 37):
@@ -54,7 +54,7 @@ def test_jitter_never_opens_an_incident():
     assert opened == []
     # 400 samples = 800 s: the first fit plus a refit every REFIT_INTERVAL_SEC, not one per
     # sample, and the forest only runs for the bumps that clear the minimum deviation.
-    assert det.fit_count <= 1 + 800 // main.REFIT_INTERVAL_SEC
+    assert det.fit_count <= 1 + 800 // config.REFIT_INTERVAL_SEC
     assert det.forest_fits <= len(range(20, 400, 37))
 
 
@@ -64,7 +64,7 @@ def test_cpu_spike_opens_one_incident_and_closes():
     opened, closed = feed(det, [(95.0, 130.0)] * 3, clock)
     assert opened == ["cpu_spike"]
     assert closed == []
-    opened, closed = feed(det, [idle(rng) for _ in range(main.CLOSE_AFTER)], clock)
+    opened, closed = feed(det, [idle(rng) for _ in range(config.CLOSE_AFTER)], clock)
     assert opened == [] and closed == ["cpu_spike"]
 
 
@@ -87,25 +87,25 @@ def test_held_leak_stays_open_until_released():
     assert det.open == {"memory_leak"}
     assert det.baseline["ram"] < 135
     # The forest confirmed the first samples; the open incident needs no fit every 2 s.
-    assert det.forest_fits == main.OPEN_AFTER
-    opened, closed = feed(det, [idle(rng) for _ in range(main.CLOSE_AFTER)], clock)
+    assert det.forest_fits == config.OPEN_AFTER
+    opened, closed = feed(det, [idle(rng) for _ in range(config.CLOSE_AFTER)], clock)
     assert closed == ["memory_leak"]
 
 
 def test_small_memory_growth_is_not_a_leak():
     rng, clock = random.Random(5), Clock()
     det = trained_detector(clock, rng)
-    opened, _ = feed(det, [(2.0, 130.0 + main.RAM_MIN_DELTA_MB - 5)] * 20, clock)
+    opened, _ = feed(det, [(2.0, 130.0 + config.RAM_MIN_DELTA_MB - 5)] * 20, clock)
     assert opened == []
 
 
 def test_warmup_baseline_is_replaced_by_live_samples():
     rng, clock = random.Random(6), Clock()
-    det = main.Detector()
-    det.add_warmup([(1.5, 130.0)] * main.WARMUP_POINTS)
+    det = detection.Detector()
+    det.add_warmup([(1.5, 130.0)] * config.WARMUP_POINTS)
     det.observe(*idle(rng), clock.tick())
     assert det.baseline["source"] == "warm-up"
-    feed(det, [idle(rng) for _ in range(main.LIVE_FIT_SAMPLES)], clock)
+    feed(det, [idle(rng) for _ in range(config.LIVE_FIT_SAMPLES)], clock)
     assert det.baseline["source"] == "live"
     assert all(not synthetic for _, _, synthetic in det.samples)
 
@@ -123,45 +123,45 @@ def test_reset_relearns_baseline():
 
 def test_record_sample_raises_one_report_per_incident(client, monkeypatch):
     reports = []
-    monkeypatch.setattr(main, "trigger_auto_rca", reports.append)
+    monkeypatch.setattr(rca, "trigger_auto_rca", reports.append)
     rng, clock = random.Random(8), Clock()
     for _ in range(30):
-        main.record_sample(*idle(rng), now=clock.tick())
+        telemetry.record_sample(*idle(rng), now=clock.tick())
     assert client.get("/api/status").json()["state"] == "healthy"
 
     for _ in range(4):
-        main.record_sample(90.0, 131.0, now=clock.tick())
+        telemetry.record_sample(90.0, 131.0, now=clock.tick())
     status = client.get("/api/status").json()
     assert status["status"] == "Anomalous (CPU Spike)"
     assert status["state"] == "anomalous"
     assert status["incidents"][0]["kind"] == "cpu_spike"
     assert reports == ["cpu_spike"]
 
-    for _ in range(main.CLOSE_AFTER):
-        main.record_sample(*idle(rng), now=clock.tick())
+    for _ in range(config.CLOSE_AFTER):
+        telemetry.record_sample(*idle(rng), now=clock.tick())
     assert client.get("/api/status").json()["state"] == "healthy"
     # A second spike is a new incident with its own report.
     for _ in range(2):
-        main.record_sample(90.0, 131.0, now=clock.tick())
+        telemetry.record_sample(90.0, 131.0, now=clock.tick())
     assert reports == ["cpu_spike", "cpu_spike"]
 
     metrics = client.get("/api/metrics", params={"limit": 3}).json()
     assert metrics[0]["status"] == "Anomalous (CPU Spike)"
     assert metrics[0]["timestamp"].endswith("Z")
-    messages = [e["message"] for e in main.recent_events(0)]
+    messages = [e["message"] for e in eventlog.recent_events(0)]
     assert any(m.startswith("Incident opened: Anomalous (CPU Spike)") for m in messages)
     assert any(m.startswith("Incident resolved") for m in messages)
 
 
 def test_seeded_warmup_lets_the_watchdog_start_at_once(client, monkeypatch):
-    monkeypatch.setattr(main, "trigger_auto_rca", lambda kind: None)
-    assert main.seed_warmup_metrics(2.0, 130.0) == main.WARMUP_POINTS
+    monkeypatch.setattr(rca, "trigger_auto_rca", lambda kind: None)
+    assert telemetry.seed_warmup_metrics(2.0, 130.0) == config.WARMUP_POINTS
     # Recent samples exist now, so a restart does not seed again.
-    assert main.seed_warmup_metrics(2.0, 130.0) == 0
+    assert telemetry.seed_warmup_metrics(2.0, 130.0) == 0
     metrics = client.get("/api/metrics", params={"limit": 100}).json()
-    assert len(metrics) == main.WARMUP_POINTS
-    assert {m["status"] for m in metrics} == {main.WARMUP_STATUS}
-    main.record_sample(2.0, 130.0, now=2.0)
+    assert len(metrics) == config.WARMUP_POINTS
+    assert {m["status"] for m in metrics} == {config.WARMUP_STATUS}
+    telemetry.record_sample(2.0, 130.0, now=2.0)
     status = client.get("/api/status").json()
     assert status["state"] == "healthy"
     assert status["baseline"]["source"] == "warm-up"
@@ -171,19 +171,19 @@ def test_seeded_warmup_lets_the_watchdog_start_at_once(client, monkeypatch):
 
 
 def add_tx(amount):
-    with main.app_db() as conn:
+    with db.app_db() as conn:
         conn.execute("INSERT INTO transactions (id, amount) VALUES (?, ?)", (str(amount), amount))
         conn.commit()
 
 
 def test_snapshot_uses_its_own_time_and_skips_unchanged(client):
     add_tx(1)
-    first = main.take_snapshot(T0)
+    first = snapshots.take_snapshot(T0)
     assert first == "app_20260101_100000.db.bak"
     # Unchanged database: no new snapshot, however much later.
-    assert main.take_snapshot(T0 + timedelta(minutes=5)) is None
+    assert snapshots.take_snapshot(T0 + timedelta(minutes=5)) is None
     add_tx(2)
-    second = main.take_snapshot(T0 + timedelta(minutes=6))
+    second = snapshots.take_snapshot(T0 + timedelta(minutes=6))
     assert second == "app_20260101_100600.db.bak"
 
     backups = client.get("/api/backups").json()
@@ -192,46 +192,46 @@ def test_snapshot_uses_its_own_time_and_skips_unchanged(client):
 
 
 def test_snapshots_keep_newest(client):
-    for i in range(main.SNAPSHOTS_KEEP + 3):
+    for i in range(config.SNAPSHOTS_KEEP + 3):
         add_tx(i)
-        assert main.take_snapshot(T0 + timedelta(seconds=30 * i))
-    names = main.list_snapshots()
-    assert len(names) == main.SNAPSHOTS_KEEP
+        assert snapshots.take_snapshot(T0 + timedelta(seconds=30 * i))
+    names = snapshots.list_snapshots()
+    assert len(names) == config.SNAPSHOTS_KEEP
     assert (
         names[0]
-        == f"app_{T0 + timedelta(seconds=30 * (main.SNAPSHOTS_KEEP + 2)):%Y%m%d_%H%M%S}.db.bak"
+        == f"app_{T0 + timedelta(seconds=30 * (config.SNAPSHOTS_KEEP + 2)):%Y%m%d_%H%M%S}.db.bak"
     )
-    assert not [f for f in os.listdir(main.BACKUP_DIR) if f.endswith(".tmp")]
+    assert not [f for f in os.listdir(config.BACKUP_DIR) if f.endswith(".tmp")]
 
 
 def test_snapshot_skips_corrupt_database(client):
     add_tx(1)
-    with open(main.DB_FILE, "r+b") as f:
+    with open(config.DB_FILE, "r+b") as f:
         f.write(b"GARBAGE" * 10)
-    assert main.take_snapshot(T0) is None
-    assert main.list_snapshots() == []
-    assert not os.listdir(main.BACKUP_DIR)
+    assert snapshots.take_snapshot(T0) is None
+    assert snapshots.list_snapshots() == []
+    assert not os.listdir(config.BACKUP_DIR)
 
 
 def test_restore_skips_unreadable_snapshot(client):
     add_tx(7)
-    good = main.take_snapshot(T0)
+    good = snapshots.take_snapshot(T0)
     bad = "app_20260101_110000.db.bak"
-    with open(os.path.join(main.BACKUP_DIR, bad), "wb") as f:
+    with open(os.path.join(config.BACKUP_DIR, bad), "wb") as f:
         f.write(b"not sqlite")
-    with open(main.DB_FILE, "r+b") as f:
+    with open(config.DB_FILE, "r+b") as f:
         f.write(b"GARBAGE" * 10)
-    assert main.list_snapshots()[0] == bad
-    assert main.restore_latest_backup()
-    conn = sqlite3.connect(main.DB_FILE)
+    assert snapshots.list_snapshots()[0] == bad
+    assert snapshots.restore_latest_backup()
+    conn = sqlite3.connect(config.DB_FILE)
     try:
         assert conn.execute("SELECT amount FROM transactions").fetchall() == [(7.0,)]
     finally:
         conn.close()
-    assert good in main.list_snapshots()
+    assert good in snapshots.list_snapshots()
 
 
 @pytest.mark.parametrize("name", ["app_2026_1.db.bak", "other.db.bak"])
 def test_foreign_files_are_not_snapshots(name):
-    open(os.path.join(main.BACKUP_DIR, name), "wb").close()
-    assert main.list_snapshots() == []
+    open(os.path.join(config.BACKUP_DIR, name), "wb").close()
+    assert snapshots.list_snapshots() == []

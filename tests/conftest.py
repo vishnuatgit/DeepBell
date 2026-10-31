@@ -31,26 +31,27 @@ def client():
 
 @pytest.fixture(autouse=True)
 def clean_state(monkeypatch):
-    import main
+    from deepbell import config, db, detection, runtime
+    from deepbell.routes import chaos as chaos_routes
 
     monkeypatch.setenv("GOOGLE_API_KEY", "")
-    for folder in (main.BACKUP_DIR, main.REPORTS_DIR):
+    for folder in (config.BACKUP_DIR, config.REPORTS_DIR):
         for f in glob.glob(os.path.join(folder, "*")):
             os.remove(f)
-    for f in (main.DB_FILE, main.METRICS_DB):
+    for f in (config.DB_FILE, config.METRICS_DB):
         if os.path.exists(f):
             os.remove(f)
-    main.init_metrics_db()
-    main.release_memory()
-    monkeypatch.setattr(main, "detector", main.Detector())
-    monkeypatch.setattr(main, "_runtime_api_key", "")
-    monkeypatch.setattr(main, "_db_error", None)
-    monkeypatch.setattr(main, "_demo", None)
-    monkeypatch.setattr(main, "_last_sample_at", None)
-    main.open_incidents.clear()
-    main._last_fault_at.clear()
-    main._events.clear()
-    main._pending_faults.clear()
-    main._first_flagged.clear()
+    db.init_metrics_db()
+    chaos_routes.release_memory()
+    monkeypatch.setattr(runtime, "detector", detection.Detector())
+    monkeypatch.setattr(runtime, "api_key", "")
+    monkeypatch.setattr(runtime, "db_error", None)
+    monkeypatch.setattr(runtime, "demo", None)
+    monkeypatch.setattr(runtime, "last_sample_at", None)
+    runtime.open_incidents.clear()
+    runtime.last_fault_at.clear()
+    runtime.events.clear()
+    runtime.pending_faults.clear()
+    runtime.first_flagged.clear()
     yield
-    main.release_memory()
+    chaos_routes.release_memory()

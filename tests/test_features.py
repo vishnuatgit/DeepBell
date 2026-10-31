@@ -8,13 +8,29 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-import main
+from deepbell import (
+    chaos,
+    config,
+    db,
+    demo,
+    eventlog,
+    incident_store,
+    incidents,
+    overview,
+    rca,
+    reports,
+    runtime,
+    snapshots,
+    telemetry,
+    timeutil,
+)
+from deepbell.routes import pages as pages_routes
 
 T0 = datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
 
 
 class WallClock:
-    """A controllable replacement for main.utcnow, so measured times are exact."""
+    """A controllable replacement for timeutil.utcnow, so measured times are exact."""
 
     def __init__(self):
         self.now = T0
@@ -29,14 +45,14 @@ class WallClock:
 @pytest.fixture()
 def wall(monkeypatch):
     clock = WallClock()
-    monkeypatch.setattr(main, "utcnow", clock)
+    monkeypatch.setattr(timeutil, "utcnow", clock)
     return clock
 
 
 @pytest.fixture()
 def no_reports(monkeypatch):
     calls = []
-    monkeypatch.setattr(main, "trigger_auto_rca", calls.append)
+    monkeypatch.setattr(rca, "trigger_auto_rca", calls.append)
     return calls
 
 
@@ -47,15 +63,15 @@ def idle(rng):
 def train(wall, rng, n=30):
     """Feed idle samples 2 s apart until the detector has a baseline."""
     for i in range(n):
-        wall.advance(main.SAMPLE_INTERVAL_SEC)
-        main.record_sample(*idle(rng), now=float(i * main.SAMPLE_INTERVAL_SEC))
-    assert main.detector.baseline is not None
-    return n * main.SAMPLE_INTERVAL_SEC
+        wall.advance(config.SAMPLE_INTERVAL_SEC)
+        telemetry.record_sample(*idle(rng), now=float(i * config.SAMPLE_INTERVAL_SEC))
+    assert runtime.detector.baseline is not None
+    return n * config.SAMPLE_INTERVAL_SEC
 
 
-def sample(wall, mono, cpu, ram, step=main.SAMPLE_INTERVAL_SEC):
+def sample(wall, mono, cpu, ram, step=config.SAMPLE_INTERVAL_SEC):
     wall.advance(step)
-    main.record_sample(cpu, ram, now=mono + step)
+    telemetry.record_sample(cpu, ram, now=mono + step)
     return mono + step
 
 
@@ -70,11 +86,11 @@ def test_dashboard_explains_itself(client):
     )
     assert "Run the guided demo" in html
     assert "How it works" in html
-    for _, title in main.DEMO_STEPS:
+    for _, title in config.DEMO_STEPS:
         assert title in html
-    assert main.REPO_URL in html and main.AUTHOR_URL in html
+    assert config.REPO_URL in html and config.AUTHOR_URL in html
     assert "Built by Vishnu Jayanth" in html
-    assert f"/static/app.js?v={main.STATIC_VERSION}" in html
+    assert f"/static/app.js?v={pages_routes.STATIC_VERSION}" in html
     assert client.get("/static/app.js").status_code == 200
 
 
@@ -85,20 +101,20 @@ def test_incident_timeline_measures_detect_and_resolve(client, wall, no_reports)
     rng = random.Random(1)
     mono = train(wall, rng)
     fault_at = wall.now
-    main.note_fault("memory_leak", "Chaos Lab: leaked 60 MB.")
+    incidents.note_fault("memory_leak", "Chaos Lab: leaked 60 MB.")
     mono = sample(wall, mono, 2.0, 195.0, step=1)  # first anomalous sample, 1 s later
     mono = sample(wall, mono, 2.0, 195.5)  # second in a row: the incident opens, 3 s in
-    for _ in range(main.CLOSE_AFTER):
+    for _ in range(config.CLOSE_AFTER):
         mono = sample(wall, mono, *idle(rng))  # back to normal: closes 6 s after opening
 
-    incidents = client.get("/api/incidents").json()
-    assert len(incidents) == 1
-    incident = incidents[0]
+    history = client.get("/api/incidents").json()
+    assert len(history) == 1
+    incident = history[0]
     assert incident["kind"] == "memory_leak"
     assert incident["status"] == "resolved"
-    assert incident["started_at"] == main.iso(fault_at)
+    assert incident["started_at"] == timeutil.iso(fault_at)
     assert incident["ttd_sec"] == 3
-    assert incident["ttr_sec"] == 2 * main.CLOSE_AFTER
+    assert incident["ttr_sec"] == 2 * config.CLOSE_AFTER
     assert [e["type"] for e in incident["timeline"]] == [
         "fault",
         "flagged",
@@ -115,14 +131,14 @@ def test_without_a_fault_the_first_flagged_sample_is_the_start(client, wall, no_
     rng = random.Random(2)
     mono = train(wall, rng)
     # A fault injected long ago does not explain this spike.
-    main._pending_faults["cpu_spike"] = (main.iso(wall.now - timedelta(minutes=5)), "old")
+    runtime.pending_faults["cpu_spike"] = (timeutil.iso(wall.now - timedelta(minutes=5)), "old")
     mono = sample(wall, mono, 95.0, 130.0)
     first = wall.now
     sample(wall, mono, 96.0, 130.0)
     incident = client.get("/api/incidents").json()[0]
     assert incident["status"] == "open"
-    assert incident["started_at"] == main.iso(first)
-    assert incident["ttd_sec"] == main.SAMPLE_INTERVAL_SEC
+    assert incident["started_at"] == timeutil.iso(first)
+    assert incident["ttd_sec"] == config.SAMPLE_INTERVAL_SEC
     assert incident["ttr_sec"] is None
     assert [e["type"] for e in incident["timeline"]] == ["flagged", "detected"]
     status = client.get("/api/status").json()
@@ -131,13 +147,13 @@ def test_without_a_fault_the_first_flagged_sample_is_the_start(client, wall, no_
 
 
 def test_open_incidents_are_interrupted_by_a_restart(client, no_reports):
-    main.open_incident("cpu_spike", "CPU 90%.")
-    assert main.interrupt_open_incidents() == 1
+    incidents.open_incident("cpu_spike", "CPU 90%.")
+    assert incident_store.interrupt_open_incidents() == 1
     incident = client.get("/api/incidents").json()[0]
     assert incident["status"] == "interrupted"
     assert incident["resolved_at"] is None and incident["ttr_sec"] is None
     assert incident["timeline"][-1]["type"] == "interrupted"
-    assert main.interrupt_open_incidents() == 0
+    assert incident_store.interrupt_open_incidents() == 0
 
 
 def test_rollback_is_recorded_on_the_database_incident(client, no_reports):
@@ -147,7 +163,7 @@ def test_rollback_is_recorded_on_the_database_incident(client, no_reports):
     assert incident["kind"] == "db_corruption" and incident["status"] == "open"
     assert incident["timeline"][0]["type"] == "fault"
 
-    snapshot = main.list_snapshots()[0]
+    snapshot = snapshots.list_snapshots()[0]
     assert client.post("/api/rollback", data={"filename": snapshot}).status_code == 200
     incident = client.get("/api/incidents").json()[0]
     assert incident["status"] == "resolved"
@@ -157,8 +173,8 @@ def test_rollback_is_recorded_on_the_database_incident(client, no_reports):
 
 
 def test_release_is_recorded_on_the_leak_incident(client, no_reports):
-    main.hold_leak(1)
-    main.open_incident("memory_leak", "Memory 200 MB.")
+    chaos.hold_leak(1)
+    incidents.open_incident("memory_leak", "Memory 200 MB.")
     assert client.post("/fault/memory_release").json()["released_mb"] == 1
     timeline = client.get("/api/incidents").json()[0]["timeline"]
     assert timeline[-1]["type"] == "action"
@@ -166,10 +182,10 @@ def test_release_is_recorded_on_the_leak_incident(client, no_reports):
 
 
 def test_incident_history_is_capped(client, no_reports, monkeypatch):
-    monkeypatch.setattr(main, "INCIDENTS_KEEP", 3)
+    monkeypatch.setattr(config, "INCIDENTS_KEEP", 3)
     for _ in range(5):
-        main.open_incident("cpu_spike", "")
-        main.close_incident("cpu_spike")
+        incidents.open_incident("cpu_spike", "")
+        incidents.close_incident("cpu_spike")
     ids = [i["id"] for i in client.get("/api/incidents").json()]
     assert ids == [5, 4, 3]
 
@@ -178,10 +194,10 @@ def test_incident_history_is_capped(client, no_reports, monkeypatch):
 
 
 def test_report_is_linked_and_downloads_with_timeline(client, no_reports):
-    main.open_incident("cpu_spike", "CPU 90%.")
-    record = dict(main.open_incidents["cpu_spike"])
-    name = os.path.basename(main.generate_rca_report_task("cpu_spike", record))
-    main.close_incident("cpu_spike")
+    incidents.open_incident("cpu_spike", "CPU 90%.")
+    record = dict(runtime.open_incidents["cpu_spike"])
+    name = os.path.basename(rca.generate_rca_report_task("cpu_spike", record))
+    incidents.close_incident("cpu_spike")
 
     incident = client.get("/api/incidents").json()[0]
     assert incident["report"] == name and incident["report_available"] is True
@@ -208,8 +224,8 @@ def test_report_is_linked_and_downloads_with_timeline(client, no_reports):
 
 
 def test_report_without_incident_downloads_as_saved(client):
-    main.write_report("# Incident Report: Example\n\nHello.\n")
-    name = main.list_reports()[0]
+    reports.write_report("# Incident Report: Example\n\nHello.\n")
+    name = reports.list_reports()[0]
     res = client.get(f"/api/reports/{name}/download")
     assert res.text == "# Incident Report: Example\n\nHello.\n"
     assert client.get(f"/api/reports/{name}").json()["incident_id"] is None
@@ -228,11 +244,11 @@ def test_report_endpoints_reject_bad_names(client, name, code):
 
 
 def add_metric_at(when, status, cpu=1.0, ram=130.0):
-    conn = main.get_metrics_db()
+    conn = db.get_metrics_db()
     conn.execute(
         "INSERT INTO metrics (timestamp, pid, cpu_percent, memory_mb, anomaly_status) "
         "VALUES (?, ?, ?, ?, ?)",
-        (main.iso(when), 1, cpu, ram, status),
+        (timeutil.iso(when), 1, cpu, ram, status),
     )
     conn.commit()
     conn.close()
@@ -241,18 +257,20 @@ def add_metric_at(when, status, cpu=1.0, ram=130.0):
 def test_status_history_bars(client):
     now = T0 + timedelta(minutes=10)
     minute = timedelta(minutes=1)
-    add_metric_at(T0 + 1.5 * minute, main.WARMUP_STATUS)  # bar 1: synthetic only
+    add_metric_at(T0 + 1.5 * minute, config.WARMUP_STATUS)  # bar 1: synthetic only
     add_metric_at(T0 + 2.5 * minute, "Normal")  # bar 2: healthy
     add_metric_at(T0 + 3.5 * minute, "Normal")
     add_metric_at(T0 + 3.6 * minute, "Anomalous (CPU Spike)")  # bar 3: flagged, no incident
     add_metric_at(T0 + 5.5 * minute, "Anomalous (Memory Leak)")  # bar 5: in an incident
     add_metric_at(T0 + 6.5 * minute, "Normal")  # bar 6: in an incident too
-    main.insert_incident(
-        "memory_leak", main.iso(T0 + 5.2 * minute), main.iso(T0 + 5.4 * minute), "", []
+    incident_store.insert_incident(
+        "memory_leak", timeutil.iso(T0 + 5.2 * minute), timeutil.iso(T0 + 5.4 * minute), "", []
     )
-    main.update_incident(1, status="resolved", resolved_at=main.iso(T0 + 6.8 * minute))
+    incident_store.update_incident(
+        1, status="resolved", resolved_at=timeutil.iso(T0 + 6.8 * minute)
+    )
 
-    history = main.status_history(minutes=10, bars=10, now=now)
+    history = overview.status_history(minutes=10, bars=10, now=now)
     states = [b["state"] for b in history["bars"]]
     assert states == [
         "nodata",
@@ -289,15 +307,15 @@ def test_status_history_endpoint_clamps_its_arguments(client):
 
 
 def test_stale_leak_is_released_automatically(client):
-    main.hold_leak(1)
-    assert main.release_stale_leak() == 0  # just allocated
+    chaos.hold_leak(1)
+    assert chaos.release_stale_leak() == 0  # just allocated
     status = client.get("/api/status").json()["faults"]["memory_leak"]
     assert status["held_mb"] == 1
-    assert 0 < status["auto_release_in"] <= main.LEAK_AUTO_RELEASE_SEC
-    later = time.monotonic() + main.LEAK_AUTO_RELEASE_SEC + 1
-    assert main.release_stale_leak(now=later) == 1
-    assert main.leaked_mb() == 0
-    assert any("Auto-release" in e["message"] for e in main.recent_events(0))
+    assert 0 < status["auto_release_in"] <= config.LEAK_AUTO_RELEASE_SEC
+    later = time.monotonic() + config.LEAK_AUTO_RELEASE_SEC + 1
+    assert chaos.release_stale_leak(now=later) == 1
+    assert chaos.leaked_mb() == 0
+    assert any("Auto-release" in e["message"] for e in eventlog.recent_events(0))
     status = client.get("/api/status").json()["faults"]["memory_leak"]
     assert status["auto_release_in"] is None
 
@@ -315,10 +333,10 @@ class FakeWatchdog:
         self.thread = threading.Thread(target=self.run, daemon=True)
 
     def tick(self):
-        self.mono += main.SAMPLE_INTERVAL_SEC
+        self.mono += config.SAMPLE_INTERVAL_SEC
         cpu, ram = idle(self.rng)
-        main.record_sample(cpu, ram + main.leaked_mb(), now=self.mono)
-        main.refresh_db_state()
+        telemetry.record_sample(cpu, ram + chaos.leaked_mb(), now=self.mono)
+        incidents.refresh_db_state()
 
     def run(self):
         while not self.stop.is_set():
@@ -328,8 +346,8 @@ class FakeWatchdog:
 
 @pytest.fixture()
 def fast_demo(client, monkeypatch):
-    monkeypatch.setattr(main, "DEMO_PAUSE_SEC", 0)
-    monkeypatch.setattr(main, "DEMO_POLL_SEC", 0.01)
+    monkeypatch.setattr(config, "DEMO_PAUSE_SEC", 0)
+    monkeypatch.setattr(config, "DEMO_POLL_SEC", 0.01)
     client.post("/transaction", params={"amount": 7})
     watchdog = FakeWatchdog()
     for _ in range(30):
@@ -343,7 +361,7 @@ def fast_demo(client, monkeypatch):
 def wait_for_demo(timeout=30):
     deadline = time.time() + timeout
     while time.time() < deadline:
-        run = main.demo_state()
+        run = demo.demo_state()
         if run and run["state"] != "running":
             return run
         time.sleep(0.05)
@@ -360,7 +378,7 @@ def test_guided_demo_runs_end_to_end(client, fast_demo):
 
     run = wait_for_demo()
     assert run["state"] == "succeeded", run
-    assert [s["state"] for s in run["steps"]] == ["done"] * len(main.DEMO_STEPS)
+    assert [s["state"] for s in run["steps"]] == ["done"] * len(config.DEMO_STEPS)
     assert "detected" in run["summary"] and "restored from" in run["summary"]
     leak_id, db_id = run["incident_ids"]
     incidents = {i["id"]: i for i in client.get("/api/incidents").json()}
@@ -369,7 +387,7 @@ def test_guided_demo_runs_end_to_end(client, fast_demo):
     assert incidents[leak_id]["timeline"][0]["text"].startswith("Guided demo: leaked")
     assert incidents[db_id]["kind"] == "db_corruption"
     assert incidents[db_id]["status"] == "resolved"
-    assert main.leaked_mb() == 0
+    assert chaos.leaked_mb() == 0
     assert client.get("/api/status").json()["database"]["ok"] is True
     assert [r["amount"] for r in client.get("/transactions").json()] == [7]
 
@@ -382,33 +400,33 @@ def test_guided_demo_runs_end_to_end(client, fast_demo):
 
 def test_guided_demo_explains_why_it_cannot_start(client, monkeypatch):
     # No baseline yet (nothing sampled), and only a moment to wait.
-    monkeypatch.setattr(main, "DEMO_READY_TIMEOUT_SEC", 0.05)
-    monkeypatch.setattr(main, "DEMO_POLL_SEC", 0.01)
-    monkeypatch.setattr(main, "_demo", main.new_demo_run(1))
-    main.run_demo_scenario()
-    run = main.demo_state()
+    monkeypatch.setattr(config, "DEMO_READY_TIMEOUT_SEC", 0.05)
+    monkeypatch.setattr(config, "DEMO_POLL_SEC", 0.01)
+    monkeypatch.setattr(runtime, "demo", demo.new_demo_run(1))
+    demo.run_demo_scenario()
+    run = demo.demo_state()
     assert run["state"] == "failed"
     assert run["steps"][0]["state"] == "failed"
     assert "learning its baseline" in run["steps"][0]["detail"]
-    assert main.cooldown_left("demo", main.DEMO_COOLDOWN_SEC) > 0
+    assert chaos.cooldown_left("demo", config.DEMO_COOLDOWN_SEC) > 0
 
 
 def test_guided_demo_waits_for_another_visitors_cooldown(client, monkeypatch):
-    monkeypatch.setattr(main, "DEMO_POLL_SEC", 0.01)
-    monkeypatch.setattr(main, "_demo", main.new_demo_run(1))
+    monkeypatch.setattr(config, "DEMO_POLL_SEC", 0.01)
+    monkeypatch.setattr(runtime, "demo", demo.new_demo_run(1))
     # Another visitor leaked memory just under FAULT_COOLDOWN_SEC ago.
-    main._last_fault_at["memory_leak"] = time.monotonic() - main.FAULT_COOLDOWN_SEC + 0.2
+    runtime.last_fault_at["memory_leak"] = time.monotonic() - config.FAULT_COOLDOWN_SEC + 0.2
     started = time.monotonic()
-    main.demo_claim("leak", "memory_leak")
+    demo.demo_claim("leak", "memory_leak")
     assert time.monotonic() - started >= 0.1
-    step = main.demo_state()["steps"][1]
+    step = demo.demo_state()["steps"][1]
     assert "Waiting" in step["detail"] and "cooldown" in step["detail"]
 
 
 def test_guided_demo_clears_a_leftover_leak(client, fast_demo, monkeypatch):
-    monkeypatch.setattr(main, "DEMO_CLEANUP_AFTER_SEC", 0.2)
-    main.hold_leak(5)  # another visitor's leak that nobody released
+    monkeypatch.setattr(config, "DEMO_CLEANUP_AFTER_SEC", 0.2)
+    chaos.hold_leak(5)  # another visitor's leak that nobody released
     assert client.post("/api/demo/start").status_code == 200
     run = wait_for_demo()
     assert run["state"] == "succeeded", run
-    assert any("clearing a leftover leak" in e["message"] for e in main.recent_events(0))
+    assert any("clearing a leftover leak" in e["message"] for e in eventlog.recent_events(0))

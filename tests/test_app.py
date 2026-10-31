@@ -7,11 +7,25 @@ import time
 
 import pytest
 
-import main
+from deepbell import (
+    chaos,
+    config,
+    db,
+    eventlog,
+    incidents,
+    llm,
+    rca,
+    reports,
+    runtime,
+    snapshots,
+    startup,
+    telemetry,
+    timeutil,
+)
 
 
 def add_metric(cpu, ram, status="Normal"):
-    conn = main.get_metrics_db()
+    conn = db.get_metrics_db()
     conn.execute(
         "INSERT INTO metrics (pid, cpu_percent, memory_mb, anomaly_status) VALUES (?, ?, ?, ?)",
         (1, cpu, ram, status),
@@ -33,34 +47,34 @@ ROWS = [
 
 
 def test_template_report_describes_cpu_spike():
-    report = main.build_template_report(ROWS, "2026-01-01 10:00:05")
+    report = reports.build_template_report(ROWS, "2026-01-01 10:00:05")
     assert report.startswith("# Incident Report: Anomalous (CPU Spike)")
     assert "first flagged sample was at 2026-01-01 10:00:04" in report
     assert "max 97.5 %" in report
     assert "| 2026-01-01 10:00:04 | 97.5 | 92.0 | Anomalous (CPU Spike) |" in report
     assert "GOOGLE_API_KEY" in report
     # Deterministic: same input, same output.
-    assert report == main.build_template_report(ROWS, "2026-01-01 10:00:05")
+    assert report == reports.build_template_report(ROWS, "2026-01-01 10:00:05")
 
 
 def test_template_report_memory_leak_and_empty():
     rows = [dict(r) for r in ROWS]
     rows[-1]["status"] = "Anomalous (Memory Leak)"
-    assert "never released" in main.build_template_report(rows, "now")
-    assert "No telemetry" in main.build_template_report([], "now")
+    assert "never released" in reports.build_template_report(rows, "now")
+    assert "No telemetry" in reports.build_template_report([], "now")
 
 
 def test_template_report_for_database_incident():
-    report = main.build_template_report(
+    report = reports.build_template_report(
         ROWS[:2], "now", incident="Degraded (Database Error)", detail="file is not a database"
     )
     assert report.startswith("# Incident Report: Degraded (Database Error)")
     assert "file is not a database" in report
     assert "Roll back to the newest good snapshot" in report
     # Works before any telemetry exists, too.
-    assert "## Likely cause" in main.build_template_report([], "now", incident="Degraded (X)")
+    assert "## Likely cause" in reports.build_template_report([], "now", incident="Degraded (X)")
     # Samples flagged for another fault are named as such, never as this fault's own.
-    report = main.build_template_report(ROWS, "now", incident="Degraded (Database Error)")
+    report = reports.build_template_report(ROWS, "now", incident="Degraded (Database Error)")
     assert report.startswith("# Incident Report: Degraded (Database Error)")
     assert "latest classification" not in report
     assert "belong to another fault (cpu spike)" in report
@@ -70,9 +84,9 @@ def test_report_without_key_never_calls_llm(client, monkeypatch):
     def boom(*_args, **_kwargs):
         raise AssertionError("LLM must not be called without a key")
 
-    monkeypatch.setattr(main, "generate_ai_report", boom)
+    monkeypatch.setattr(llm, "generate_ai_report", boom)
     add_metric(1.0, 90.0)
-    path = main.generate_rca_report_task()
+    path = rca.generate_rca_report_task()
     with open(path, encoding="utf-8") as f:
         text = f.read()
     assert "built-in template" in text
@@ -82,9 +96,9 @@ def test_report_without_key_never_calls_llm(client, monkeypatch):
 def test_report_with_key_uses_llm(client, monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setattr(
-        main, "generate_ai_report", lambda key, rows, incident="": f"# AI report ({key})"
+        llm, "generate_ai_report", lambda key, rows, incident="": f"# AI report ({key})"
     )
-    path = main.generate_rca_report_task()
+    path = rca.generate_rca_report_task()
     with open(path, encoding="utf-8") as f:
         assert f.read() == "# AI report (test-key)"
 
@@ -94,9 +108,9 @@ def test_report_falls_back_when_llm_fails(client, monkeypatch):
         raise RuntimeError("network down")
 
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
-    monkeypatch.setattr(main, "generate_ai_report", fail)
+    monkeypatch.setattr(llm, "generate_ai_report", fail)
     add_metric(1.0, 90.0)
-    path = main.generate_rca_report_task()
+    path = rca.generate_rca_report_task()
     with open(path, encoding="utf-8") as f:
         text = f.read()
     assert "AI report failed (RuntimeError)" in text
@@ -104,10 +118,10 @@ def test_report_falls_back_when_llm_fails(client, monkeypatch):
 
 
 def test_reports_are_pruned_to_newest(client):
-    for _ in range(main.REPORTS_KEEP + 5):
-        main.write_report("# r\n")
-    names = main.list_reports()
-    assert len(names) == main.REPORTS_KEEP
+    for _ in range(config.REPORTS_KEEP + 5):
+        reports.write_report("# r\n")
+    names = reports.list_reports()
+    assert len(names) == config.REPORTS_KEEP
     assert names == sorted(names, reverse=True)
     assert client.get("/api/reports/latest").json()["filename"] == names[0]
 
@@ -120,7 +134,7 @@ def test_dashboard_shows_report_and_key_note(client):
     assert 'id="settings-api-key"' in res.text
     assert client.get("/api/reports/latest").status_code == 404
     add_metric(1.0, 90.0)
-    main.generate_rca_report_task()
+    rca.generate_rca_report_task()
     assert "built-in template" in client.get("/").text
     report = client.get("/api/reports/latest").json()
     assert report["generated_at"].endswith("Z")
@@ -143,7 +157,7 @@ def test_status_and_metrics(client):
 
 def test_status_returns_new_events(client):
     seq = client.get("/api/status", params={"events_after": 0}).json()["event_seq"]
-    main.log_event("warn", "hello")
+    eventlog.log_event("warn", "hello")
     res = client.get("/api/status", params={"events_after": seq}).json()
     assert [e["message"] for e in res["events"]] == ["hello"]
     assert res["event_seq"] == seq + 1
@@ -158,17 +172,17 @@ def test_rca_endpoint_generates_report_with_cooldown(client):
     assert client.post("/api/rca/generate").json()["status"] in ("started", "busy")
     deadline = time.time() + 10
     while time.time() < deadline and (
-        not glob.glob(os.path.join(main.REPORTS_DIR, "*.md")) or main._reports_in_flight
+        not glob.glob(os.path.join(config.REPORTS_DIR, "*.md")) or runtime.reports_in_flight
     ):
         time.sleep(0.05)
-    assert glob.glob(os.path.join(main.REPORTS_DIR, "*.md"))
+    assert glob.glob(os.path.join(config.REPORTS_DIR, "*.md"))
     res = client.post("/api/rca/generate")
     assert res.status_code == 429
     assert "cooldown" in res.json()["detail"]
 
 
 def count_transactions():
-    conn = sqlite3.connect(main.DB_FILE)
+    conn = sqlite3.connect(config.DB_FILE)
     try:
         return conn.execute("SELECT count(*) FROM transactions").fetchone()[0]
     finally:
@@ -185,7 +199,7 @@ def test_transactions_are_validated_and_use_utc(client):
 
 
 def test_transactions_table_is_capped(client, monkeypatch):
-    monkeypatch.setattr(main, "TRANSACTIONS_KEEP", 3)
+    monkeypatch.setattr(config, "TRANSACTIONS_KEEP", 3)
     for amount in range(1, 6):
         client.post("/transaction", params={"amount": amount})
     assert count_transactions() == 3
@@ -195,7 +209,7 @@ def test_transactions_table_is_capped(client, monkeypatch):
 def test_snapshot_rollback_restores_earlier_state(client):
     assert client.post("/transaction", params={"amount": 10}).status_code == 200
     snapshot = "app_20260101_100000.db.bak"
-    shutil.copy2(main.DB_FILE, os.path.join(main.BACKUP_DIR, snapshot))
+    shutil.copy2(config.DB_FILE, os.path.join(config.BACKUP_DIR, snapshot))
     client.post("/transaction", params={"amount": 20})
     assert len(client.get("/transactions").json()) == 2
 
@@ -218,36 +232,36 @@ def test_rollback_rejects_bad_names(client, name, code):
 
 def test_corruption_is_detected_and_healed_from_snapshot(client):
     client.post("/transaction", params={"amount": 42})
-    shutil.copy2(main.DB_FILE, os.path.join(main.BACKUP_DIR, "app_20260101_100000.db.bak"))
+    shutil.copy2(config.DB_FILE, os.path.join(config.BACKUP_DIR, "app_20260101_100000.db.bak"))
 
     assert client.post("/fault/corrupt_db").json()["status"] == "fault_injected"
     with pytest.raises(sqlite3.DatabaseError):
         count_transactions()
 
-    main.verify_and_heal_database()
+    snapshots.verify_and_heal_database()
     assert count_transactions() == 1
 
 
 def test_startup_moves_aside_a_corrupt_db_without_snapshots(client):
     client.post("/transaction", params={"amount": 1})
-    with open(main.DB_FILE, "r+b") as f:
+    with open(config.DB_FILE, "r+b") as f:
         f.write(b"x" * 100)
-    main.verify_and_heal_database()
-    assert not os.path.exists(main.DB_FILE)
-    assert glob.glob(main.DB_FILE + ".corrupt-*")
-    for f in glob.glob(main.DB_FILE + ".corrupt-*"):
+    snapshots.verify_and_heal_database()
+    assert not os.path.exists(config.DB_FILE)
+    assert glob.glob(config.DB_FILE + ".corrupt-*")
+    for f in glob.glob(config.DB_FILE + ".corrupt-*"):
         os.remove(f)
 
 
 def test_corruption_degrades_health_until_rollback(client, monkeypatch):
     reports = []
-    monkeypatch.setattr(main, "trigger_auto_rca", reports.append)
+    monkeypatch.setattr(rca, "trigger_auto_rca", reports.append)
     client.post("/transaction", params={"amount": 42})
 
     # With no snapshot yet, the fault takes one first so the damage is recoverable.
     assert client.post("/fault/corrupt_db").status_code == 200
-    snapshots = main.list_snapshots()
-    assert len(snapshots) == 1
+    snapshot_names = snapshots.list_snapshots()
+    assert len(snapshot_names) == 1
 
     status = client.get("/api/status").json()
     assert status["state"] == "degraded"
@@ -260,10 +274,10 @@ def test_corruption_degrades_health_until_rollback(client, monkeypatch):
     assert "Roll back to a snapshot" in res.json()["detail"]
     assert client.post("/transaction", params={"amount": 1}).status_code == 503
     # Still one incident and one report, however often the error is seen.
-    main.refresh_db_state()
+    incidents.refresh_db_state()
     assert reports == ["db_corruption"]
 
-    assert client.post("/api/rollback", data={"filename": snapshots[0]}).status_code == 200
+    assert client.post("/api/rollback", data={"filename": snapshot_names[0]}).status_code == 200
     status = client.get("/api/status").json()
     assert status["database"]["ok"] is True
     assert status["state"] != "degraded"
@@ -273,23 +287,23 @@ def test_corruption_degrades_health_until_rollback(client, monkeypatch):
 def test_api_key_is_kept_in_memory_only(client, monkeypatch, tmp_path):
     env_file = tmp_path / ".env"
     env_file.write_text("OTHER=1\n", encoding="utf-8")
-    monkeypatch.setattr(main, "ENV_FILE", str(env_file))
-    monkeypatch.setattr(main, "load_llm", lambda relearn: None)
+    monkeypatch.setattr(config, "ENV_FILE", str(env_file))
+    monkeypatch.setattr(llm, "load_llm", lambda relearn: None)
     assert client.post("/api/settings/apikey", data={"api_key": "  "}).status_code == 400
     res = client.post("/api/settings/apikey", data={"api_key": "new"})
     assert res.status_code == 200
     assert "not saved to disk" in res.json()["message"]
-    assert main.get_api_key() == "new"
+    assert llm.get_api_key() == "new"
     assert env_file.read_text(encoding="utf-8") == "OTHER=1\n"
     assert os.environ["GOOGLE_API_KEY"] == ""
 
 
 def test_public_demo_locks_settings_and_crash(client, monkeypatch):
-    monkeypatch.setattr(main, "PUBLIC_DEMO", True)
-    monkeypatch.setattr(main, "_runtime_api_key", "should-be-ignored")
+    monkeypatch.setattr(config, "PUBLIC_DEMO", True)
+    monkeypatch.setattr(runtime, "api_key", "should-be-ignored")
     assert client.post("/api/settings/apikey").status_code == 403
     assert client.post("/api/settings/apikey", data={"api_key": "x"}).status_code == 403
-    assert main.get_api_key() == ""
+    assert llm.get_api_key() == ""
     res = client.post("/fault/fatal_crash")
     assert res.status_code == 403
     assert "public demo" in res.json()["detail"]
@@ -306,7 +320,7 @@ def test_public_demo_locks_settings_and_crash(client, monkeypatch):
 
 def test_fatal_crash_exits_locally(client, monkeypatch):
     exits = []
-    monkeypatch.setattr(main, "hard_exit", lambda: exits.append(1))
+    monkeypatch.setattr(chaos, "hard_exit", lambda: exits.append(1))
     assert client.post("/fault/fatal_crash").json()["type"] == "fatal_crash"
     deadline = time.time() + 5
     while time.time() < deadline and not exits:
@@ -320,51 +334,51 @@ def test_faults_are_post_only(client):
 
 
 def test_cpu_spike_is_capped_and_cooled_down(client):
-    res = client.post("/fault/cpu_spike", params={"duration_sec": main.MAX_SPIKE_SEC + 1})
+    res = client.post("/fault/cpu_spike", params={"duration_sec": config.MAX_SPIKE_SEC + 1})
     assert res.status_code == 400
     assert client.post("/fault/cpu_spike", params={"duration_sec": 0}).status_code == 400
     assert client.post("/fault/cpu_spike", params={"duration_sec": 1}).status_code == 200
     res = client.post("/fault/cpu_spike", params={"duration_sec": 1})
     assert res.status_code == 429
-    assert 0 < int(res.headers["Retry-After"]) <= main.FAULT_COOLDOWN_SEC
+    assert 0 < int(res.headers["Retry-After"]) <= config.FAULT_COOLDOWN_SEC
     assert "try again in" in res.json()["detail"]
     assert client.get("/api/status").json()["faults"]["cpu_spike"]["cooldown"] > 0
 
 
 def test_memory_leak_is_capped_and_released(client, monkeypatch):
-    monkeypatch.setattr(main, "MAX_LEAK_MB", 3)
-    monkeypatch.setattr(main, "MAX_LEAK_STEP_MB", 2)
+    monkeypatch.setattr(config, "MAX_LEAK_MB", 3)
+    monkeypatch.setattr(config, "MAX_LEAK_STEP_MB", 2)
     assert client.post("/fault/memory_leak", params={"size_mb": 3}).status_code == 400
     res = client.post("/fault/memory_leak", params={"size_mb": 2}).json()
     assert res["allocated_mb"] == 2 and res["held_mb"] == 2
     assert client.post("/fault/memory_leak", params={"size_mb": 1}).status_code == 429
-    main._last_fault_at.clear()
+    runtime.last_fault_at.clear()
     res = client.post("/fault/memory_leak", params={"size_mb": 2})
     assert res.status_code == 409
     assert "Release it first" in res.json()["detail"]
     assert client.get("/api/status").json()["faults"]["memory_leak"]["held_mb"] == 2
 
     assert client.post("/fault/memory_release").json()["released_mb"] == 2
-    assert main.leaked_mb() == 0
+    assert chaos.leaked_mb() == 0
     assert client.post("/fault/memory_leak", params={"size_mb": 1}).status_code == 200
 
 
 def test_leak_blocks_are_resident_memory():
-    block = main.allocate_leak(1)
+    block = chaos.allocate_leak(1)
     try:
-        assert len(block) == main.MB
-        assert block[0] == 1 and block[main.MB - mmap.PAGESIZE] == 1
+        assert len(block) == config.MB
+        assert block[0] == 1 and block[config.MB - mmap.PAGESIZE] == 1
     finally:
         block.close()
 
 
 def test_seed_demo_data_is_idempotent(client):
-    main.seed_demo_data()
-    main.seed_demo_data()
+    startup.seed_demo_data()
+    startup.seed_demo_data()
     rows = client.get("/transactions").json()
-    assert len(rows) == len(main.SAMPLE_AMOUNTS)
+    assert len(rows) == len(startup.SAMPLE_AMOUNTS)
     assert all(r["timestamp"].endswith("Z") for r in rows)
-    assert len(main.list_reports()) == 1
+    assert len(reports.list_reports()) == 1
     report = client.get("/api/reports/latest").json()["content"]
     assert "Example report" in report
     assert "synthetic telemetry" in report
@@ -385,20 +399,20 @@ def test_read_cpu_quota(tmp_path, files, expected):
         path = tmp_path / name
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
-    assert main.read_cpu_quota(str(tmp_path)) == expected
+    assert telemetry.read_cpu_quota(str(tmp_path)) == expected
 
 
 def test_cpu_capacity_override(monkeypatch):
     monkeypatch.setenv("DEEPBELL_CPU_CORES", "0.25")
-    assert main.cpu_capacity() == 0.25
+    assert telemetry.cpu_capacity() == 0.25
     monkeypatch.setenv("DEEPBELL_CPU_CORES", "4")
-    assert main.cpu_capacity() == 1.0
+    assert telemetry.cpu_capacity() == 1.0
     monkeypatch.setenv("DEEPBELL_CPU_CORES", "oops")
-    assert main.cpu_capacity() == 1.0
+    assert telemetry.cpu_capacity() == 1.0
 
 
 def test_timestamps_are_normalised_to_utc():
-    assert main.to_iso_utc("2026-01-01 10:00:00") == "2026-01-01T10:00:00Z"
-    assert main.to_iso_utc("2026-01-01T15:30:00+05:30") == "2026-01-01T10:00:00Z"
-    assert main.to_iso_utc("not a time") == "not a time"
-    assert main.to_iso_utc(None) is None
+    assert timeutil.to_iso_utc("2026-01-01 10:00:00") == "2026-01-01T10:00:00Z"
+    assert timeutil.to_iso_utc("2026-01-01T15:30:00+05:30") == "2026-01-01T10:00:00Z"
+    assert timeutil.to_iso_utc("not a time") == "not a time"
+    assert timeutil.to_iso_utc(None) is None
