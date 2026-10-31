@@ -9,7 +9,7 @@ Monitoring usually stops at an alert. DeepBell practises the steps after it: **d
 
 ## Live demo
 
-**TODO: Render URL** (deployed from [`render.yaml`](render.yaml), see [Deploy on Render](#deploy-on-render)).
+**[deepbell.onrender.com](https://deepbell.onrender.com)** (deployed from [`render.yaml`](render.yaml), see [Deploy on Render](#deploy-on-render)). Free hosting: the first visit can take about a minute to wake it up. Press **Run guided demo** to watch it leak memory, detect it, write a report and recover.
 
 Open it and press **Run the guided demo**. The demo is one shared instance on Render's free plan: everyone sees the same telemetry and incidents, and the first visit after 15 quiet minutes takes about a minute while the service wakes up.
 
