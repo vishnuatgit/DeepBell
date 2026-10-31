@@ -6,7 +6,6 @@ Monitoring usually stops at an alert. DeepBell practises the steps after it: **d
 
 [![CI](https://github.com/vishnuatgit/DeepBell/actions/workflows/ci.yml/badge.svg)](https://github.com/vishnuatgit/DeepBell/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue)
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## Live demo
 
@@ -237,6 +236,6 @@ All timestamps in API responses are ISO-8601 in UTC; the UI shows them in the vi
 - Open incidents, cooldowns, the guided demo and leaked memory live in one process, so the app must run as a single worker. If the server restarts while an incident is open, that incident is marked interrupted.
 - Times to detect and recover are measured on injected faults in this lab and say nothing about a production system.
 
-## License
+## Author
 
-[MIT](LICENSE) © 2026 Chandana Vishnu Jayanth · [Portfolio](https://vishnuatgit.github.io)
+Built by Chandana Vishnu Jayanth · [Portfolio](https://vishnuatgit.github.io)
