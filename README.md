@@ -6,6 +6,7 @@ Monitoring usually stops at an alert. DeepBell practises the steps after it: **d
 
 [![CI](https://github.com/vishnuatgit/DeepBell/actions/workflows/ci.yml/badge.svg)](https://github.com/vishnuatgit/DeepBell/actions/workflows/ci.yml)
 ![Python](https://img.shields.io/badge/Python-3.11%20%7C%203.12-blue)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 
 ## Live demo
 
@@ -260,3 +261,7 @@ All timestamps in API responses are ISO-8601 in UTC; the UI shows them in the vi
 ## Author
 
 Built by Chandana Vishnu Jayanth · [Portfolio](https://vishnuatgit.github.io)
+
+## License
+
+[MIT](LICENSE) © 2026 Chandana Vishnu Jayanth
