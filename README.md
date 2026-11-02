@@ -260,7 +260,7 @@ All timestamps in API responses are ISO-8601 in UTC; the UI shows them in the vi
 
 ## Author
 
-Built by Chandana Vishnu Jayanth · [Portfolio](https://vishnuatgit.github.io)
+Built by Chandana Vishnu Jayanth · [Portfolio](https://vishnuatgit.github.io) · [Case study](https://vishnuatgit.github.io/projects/deepbell.html) ([PDF](https://vishnuatgit.github.io/pdf/deepbell-case-study.pdf))
 
 ## License
 
