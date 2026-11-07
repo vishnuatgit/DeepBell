@@ -2,6 +2,7 @@
 
 import glob
 import os
+import shutil
 import tempfile
 import time
 
@@ -37,6 +38,14 @@ def wait_for_reports(timeout=10):
     deadline = time.time() + timeout
     while runtime.reports_in_flight and time.time() < deadline:
         time.sleep(0.02)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def remove_temp_dir():
+    """Deletes the temporary folder after the run, so test runs don't pile up in the temp directory."""
+    yield
+    wait_for_reports()
+    shutil.rmtree(_tmp, ignore_errors=True)
 
 
 @pytest.fixture(autouse=True)
