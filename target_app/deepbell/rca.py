@@ -3,7 +3,7 @@
 import os
 import threading
 
-from . import config, eventlog, incident_store, llm, reports, runtime, timeutil
+from . import config, eventlog, incident_store, llm, metrics, reports, runtime, timeutil
 
 
 def trigger_auto_rca(incident: str = "") -> None:
@@ -61,6 +61,7 @@ def generate_rca_report_task(incident: str = "", record: dict | None = None) -> 
                 )
             report_path = reports.write_report(content)
             name = os.path.basename(report_path)
+            metrics.REPORTS.labels(source).inc()
             incident_store.update_incident(
                 incident_id, ("report", f"Report written ({source}): {name}"), report=name
             )

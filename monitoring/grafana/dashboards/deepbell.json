@@ -1,0 +1,690 @@
+{
+  "uid": "deepbell",
+  "title": "DeepBell",
+  "tags": [
+    "deepbell"
+  ],
+  "timezone": "browser",
+  "editable": true,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "5s",
+  "time": {
+    "from": "now-30m",
+    "to": "now"
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Incident opened",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "deepbell-prometheus"
+        },
+        "enable": true,
+        "iconColor": "red",
+        "expr": "sum(changes(deepbell_incidents_total[10s])) > 0",
+        "step": "10s",
+        "titleFormat": "Incident opened"
+      },
+      {
+        "name": "Fault injected",
+        "datasource": {
+          "type": "prometheus",
+          "uid": "deepbell-prometheus"
+        },
+        "enable": true,
+        "iconColor": "orange",
+        "expr": "sum(changes(deepbell_fault_injections_total[10s])) > 0",
+        "step": "10s",
+        "titleFormat": "Fault injected"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Incidents open",
+      "description": "Open right now.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "deepbell_incidents_open",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "red"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Incidents in range",
+      "description": "Opened during the selected time range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 4,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum(increase(deepbell_incidents_total[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Avg time to detect",
+      "description": "Fault or first anomalous sample to the incident opening.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum(increase(deepbell_detection_seconds_sum[$__range])) / sum(increase(deepbell_detection_seconds_count[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Avg time to recover",
+      "description": "Incident opened to resolved.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum(increase(deepbell_recovery_seconds_sum[$__range])) / sum(increase(deepbell_recovery_seconds_count[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Faults injected",
+      "description": "Chaos Lab and guided-demo faults in range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum(increase(deepbell_fault_injections_total[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Snapshot restores",
+      "description": "Rollbacks and self-heals in range.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 20,
+        "y": 0,
+        "w": 4,
+        "h": 4
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum(increase(deepbell_snapshot_restores_total[$__range]))",
+          "legendFormat": "",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "decimals": 1,
+          "noValue": "0",
+          "color": {
+            "mode": "fixed",
+            "fixedColor": "blue"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ]
+        },
+        "colorMode": "value",
+        "graphMode": "none"
+      }
+    },
+    {
+      "id": 7,
+      "type": "timeseries",
+      "title": "CPU (%)",
+      "description": "Share of the CPU available to DeepBell. Red lines: an incident opened. Orange lines: a fault was injected.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "deepbell_cpu_percent",
+          "legendFormat": "CPU %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "timeseries",
+      "title": "Memory (MB)",
+      "description": "Resident memory of the DeepBell process. Red lines: incident opened. Orange lines: fault injected.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 4,
+        "w": 12,
+        "h": 8
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "deepbell_memory_mb",
+          "legendFormat": "Resident memory",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "decmbytes",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "timeseries",
+      "title": "Anomaly score",
+      "description": "1 while the latest sample is flagged by the watchdog (baseline check plus Isolation Forest).",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 12,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "deepbell_anomaly_score",
+          "legendFormat": "1 = latest sample flagged",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "deepbell_incidents_open",
+          "legendFormat": "Incidents open",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          },
+          "max": 1.2,
+          "min": 0
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Detection and recovery time (average per 5 min)",
+      "description": "Gaps mean no incident was detected or recovered in that window.",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 12,
+        "y": 12,
+        "w": 12,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "increase(deepbell_detection_seconds_sum[5m]) / increase(deepbell_detection_seconds_count[5m])",
+          "legendFormat": "Time to detect",
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "increase(deepbell_recovery_seconds_sum[5m]) / increase(deepbell_recovery_seconds_count[5m])",
+          "legendFormat": "Time to recover",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 12,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "type": "bargauge",
+      "title": "Faults injected by kind (in range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 18,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum by (kind) (increase(deepbell_fault_injections_total[$__range]))",
+          "legendFormat": "kind",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 12,
+      "type": "bargauge",
+      "title": "Incidents by kind (in range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 18,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum by (kind) (increase(deepbell_incidents_total[$__range]))",
+          "legendFormat": "kind",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    },
+    {
+      "id": 13,
+      "type": "bargauge",
+      "title": "Reports written by source (in range)",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "deepbell-prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 18,
+        "w": 8,
+        "h": 6
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "deepbell-prometheus"
+          },
+          "expr": "sum by (source) (increase(deepbell_reports_generated_total[$__range]))",
+          "legendFormat": "source",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "decimals": 0,
+          "min": 0,
+          "noValue": "0"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "values": false
+        },
+        "orientation": "horizontal",
+        "displayMode": "gradient"
+      }
+    }
+  ],
+  "templating": {
+    "list": []
+  }
+}

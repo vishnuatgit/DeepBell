@@ -1,0 +1,39 @@
+# DeepBell + Prometheus + Grafana, for local use only.
+#   docker compose -f monitoring/docker-compose.yml up --build
+# DeepBell:   http://localhost:8000      Prometheus: http://localhost:9090
+# Grafana:    http://localhost:3000      (opens the DeepBell dashboard, no login needed)
+services:
+  deepbell:
+    build: .. # the Dockerfile in the repository root
+    ports:
+      - "8000:8000"
+    restart: unless-stopped # the "crash" fault exits the process: Docker brings it back
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://127.0.0.1:8000/healthz')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  prometheus:
+    image: prom/prometheus:v2.55.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    depends_on:
+      - deepbell
+
+  grafana:
+    image: grafana/grafana:11.3.0
+    ports:
+      - "3000:3000"
+    environment:
+      # Local lab only: anyone who can reach the port can view the dashboard.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /var/lib/grafana/dashboards/deepbell.json
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus

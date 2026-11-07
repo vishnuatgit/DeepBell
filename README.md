@@ -127,6 +127,16 @@ docker run --rm -p 8000:8000 -e PUBLIC_DEMO=1 deepbell
 
 The image is based on `python:3.11-slim`, runs as an unprivileged user and starts a single uvicorn worker (the app keeps its state and background threads in one process). It listens on `$PORT` (default 8000) and keeps its data in `/app/var`. Drop `-e PUBLIC_DEMO=1` to enable the crash fault and the Settings view; add `-e GOOGLE_API_KEY=...` for AI reports. `.dockerignore` keeps `.env`, local data and development files out of the image.
 
+## Monitoring with Prometheus and Grafana
+
+DeepBell serves its own metrics at `/metrics` (Prometheus text format; CPU and memory gauges, the latest anomaly score, incidents open and opened by kind, detection and recovery time histograms, fault injections, reports written and snapshot restores). To see them in Grafana on your machine (needs Docker):
+
+```bash
+docker compose -f monitoring/docker-compose.yml up --build
+```
+
+Then open Grafana at http://localhost:3000 (the DeepBell dashboard is the home page, no login needed), Prometheus at http://localhost:9090 and DeepBell at http://localhost:8000. Inject a fault in the Chaos Lab and watch the graphs; incident openings and fault injections appear as red and orange annotation lines. Stop it with `docker compose -f monitoring/docker-compose.yml down`. This stack is for local use only: the public demo only exposes `/metrics`. Details: [docs/walkthroughs/01-prometheus-grafana.md](docs/walkthroughs/01-prometheus-grafana.md).
+
 ## Tests
 
 ```bash
@@ -203,6 +213,7 @@ DeepBell/
 │   ├── process-flows.md     # Every user and system flow, with diagrams
 │   ├── screenshots/         # README and portfolio images
 │   └── major_project_proposal.md
+├── monitoring/              # docker-compose (DeepBell, Prometheus, Grafana) and the dashboard
 ├── run_all.py               # Supervisor: restarts the server after a crash
 ├── Dockerfile               # Production image (single uvicorn worker, non-root)
 ├── render.yaml              # Render Blueprint for the public demo
@@ -222,6 +233,7 @@ DeepBell/
 | GET | `/healthz` | Liveness check |
 | GET | `/api/status` | Health, open incidents, last sample and its time, baseline, detector streaks, database state, fault cooldowns, guided-demo progress, the live pipeline (`pipeline`), the newest snapshot and whether it holds the current data, and uptime. `?events_after=N` also returns server events newer than N. |
 | GET | `/api/status/history?minutes=&bars=` | Status-strip bars (default 30 minutes in 60 bars) and the share of healthy live samples |
+| GET | `/metrics` | Prometheus metrics (text format) |
 | GET | `/api/metrics?limit=` | Latest telemetry samples, newest first (default 15, at most 400) |
 | GET | `/api/incidents?limit=` | Incident history, newest first, with timelines and times to detect and recover |
 | GET | `/api/incidents/stats` | Incident counts and median times to detect and recover over the newest 20 |

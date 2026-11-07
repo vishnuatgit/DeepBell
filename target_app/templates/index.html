@@ -727,6 +727,7 @@
                             <div><dt>SQLite</dt><dd>app data, metrics, incident history and snapshots</dd></div>
                             <div><dt>LangChain, Gemini</dt><dd>optional AI-written reports; a built-in template otherwise</dd></div>
                             <div><dt>Jinja2, Chart.js, marked</dt><dd>the UI, with no build step</dd></div>
+                            <div><dt>prometheus-client, Grafana</dt><dd>a <a href="/metrics">/metrics</a> endpoint and a ready-made dashboard (see the README)</dd></div>
                             <div><dt>pytest, ruff, GitHub Actions</dt><dd>tests, lint and CI</dd></div>
                             <div><dt>Docker, Render</dt><dd>the container and the public demo</dd></div>
                         </dl>
@@ -773,6 +774,8 @@
             <a href="{{ repo_url }}" target="_blank" rel="noopener">Source on GitHub</a>
             <span aria-hidden="true">·</span>
             <a href="{{ author_url }}" target="_blank" rel="noopener">Built by Vishnu Jayanth</a>
+            <span aria-hidden="true">·</span>
+            <a href="/metrics">Prometheus metrics</a>
             <span aria-hidden="true">·</span>
             <span>{% if public_demo %}Public demo: shared instance, data resets on restart.{% else %}Local run.{% endif %}</span>
         </footer>

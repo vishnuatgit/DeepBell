@@ -27,6 +27,7 @@ OPENAPI_TAGS = [
     {"name": "database", "description": "Sample transactions, snapshots and rollback."},
     {"name": "chaos lab", "description": "Capped fault injection with shared cooldowns."},
     {"name": "guided demo", "description": "The scripted detect, report, recover scenario."},
+    {"name": "monitoring", "description": "Prometheus metrics for Grafana dashboards."},
     {"name": "settings", "description": "Local runs only: the Gemini API key, kept in memory."},
 ]
 

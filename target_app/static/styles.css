@@ -3467,6 +3467,7 @@ abbr[title] {
 .page-footer {
     display: flex;
     flex-wrap: wrap;
+    align-items: center;
     gap: 8px 12px;
     padding-top: 18px;
     border-top: 1px solid var(--border);
@@ -3482,6 +3483,28 @@ abbr[title] {
 
 .page-footer a:hover {
     color: var(--heading);
+}
+
+/* On a phone the footer links wrap onto several lines, so the dot separators would sit alone. */
+@media (max-width: 640px) {
+    .page-footer {
+        gap: 4px 20px;
+    }
+
+    .page-footer > [aria-hidden="true"] {
+        display: none;
+    }
+
+    /* Make room in the top bar for the status text ("Incident: memory leak"). */
+    .badge-sre {
+        display: none;
+    }
+}
+
+/* Let the snapshot time and its "x ago" note wrap, so the Restore button is never pushed out
+   of view behind a horizontal scrollbar. */
+.table td.time {
+    white-space: normal;
 }
 
 /* A bar at the top of the main column: it pushes the page down rather than covering it, and

@@ -5,7 +5,7 @@ record faults and recovery actions, and close. Also tracks the database health c
 import sqlite3
 from datetime import datetime, timedelta
 
-from . import config, db, eventlog, incident_store, rca, runtime, timeutil
+from . import config, db, eventlog, incident_store, metrics, rca, runtime, timeutil
 
 
 def incident_start(kind: str, now: datetime) -> tuple[str, list[dict]]:
@@ -52,6 +52,8 @@ def open_incident(kind: str, detail: str = "") -> bool:
             "opened_at": detected,
             "detail": detail,
         }
+    metrics.INCIDENTS.labels(kind).inc()
+    metrics.DETECTION_SECONDS.observe(timeutil.seconds_between(started, detected) or 0)
     eventlog.log_event(
         "error", f"Incident opened: {config.INCIDENT_LABELS[kind]}. {detail}".strip()
     )
@@ -77,12 +79,14 @@ def close_incident(kind: str, resolution: str = "") -> None:
         config.logger.error(f"Could not record the resolution: {e}")
     opened = timeutil.parse_utc(incident["opened_at"])
     seconds = int((resolved - opened).total_seconds()) if opened else 0
+    metrics.RECOVERY_SECONDS.observe(seconds)
     eventlog.log_event("success", f"Incident resolved: {incident['label']} after {seconds} s.")
 
 
 def note_fault(kind: str, text: str) -> None:
     """Record an injected fault: on the open incident of that kind, or as the start of the next."""
     now = timeutil.iso(timeutil.utcnow())
+    metrics.FAULTS.labels(kind).inc()
     with runtime.lock:
         incident = runtime.open_incidents.get(kind)
         if incident is None:
