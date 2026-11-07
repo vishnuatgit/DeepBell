@@ -11,6 +11,7 @@ from . import (
     config,
     db,
     eventlog,
+    metrics,
     runtime,
     timeutil,
 )
@@ -107,6 +108,7 @@ def snapshot_info(name: str) -> dict:
 def restore_snapshot(name: str) -> None:
     with runtime.db_file_lock:
         shutil.copyfile(os.path.join(config.BACKUP_DIR, name), config.DB_FILE)
+    metrics.SNAPSHOT_RESTORES.inc()
 
 
 def newest_good_snapshot() -> str | None:

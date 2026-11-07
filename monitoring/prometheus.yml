@@ -1,0 +1,11 @@
+# Prometheus scrape config for the DeepBell lab stack (see docker-compose.yml).
+global:
+  scrape_interval: 5s # DeepBell samples every 2 s; 5 s keeps graphs smooth and cheap
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: deepbell
+    metrics_path: /metrics
+    static_configs:
+      # "deepbell" is the service name in docker-compose.yml, reachable on the compose network.
+      - targets: ["deepbell:8000"]
