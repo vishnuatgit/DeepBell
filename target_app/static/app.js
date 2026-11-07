@@ -9,6 +9,7 @@ const INITIAL_REPORT = JSON.parse(document.getElementById('deepbell-report').tex
 const VIEWS = {
     overview: ['Overview', 'Self-monitoring incident response lab'],
     incidents: ['Incidents', 'Detect, report, recover'],
+    alerts: ['Alerts', 'Rules, states and notifications'],
     telemetry: ['Live Telemetry', 'CPU and memory of this process'],
     chaos: ['Chaos Lab', 'Capped fault injection'],
     timemachine: ['Time Machine', 'Snapshots and rollback'],
@@ -29,6 +30,9 @@ const SOURCE_LABELS = {
     'template-fallback': ['Template fallback (AI call failed)', 'warn'],
     example: ['Example, synthetic data', 'neutral'],
 };
+const ALERT_TONES = { ok: 'ok', pending: 'warn', firing: 'bad', resolved: 'info' };
+const ALERT_LABELS = { ok: 'OK', pending: 'Pending', firing: 'Firing', resolved: 'Resolved' };
+const SEVERITY_TONES = { info: 'info', warning: 'warn', critical: 'bad' };
 const STAGE_NAMES = { sample: 'Sample', detect: 'Detect', report: 'Report', recover: 'Recover' };
 // Short enough for the sidebar's status box.
 const SHORT_NAMES = { cpu_spike: 'CPU spike', memory_leak: 'memory leak', db_corruption: 'DB corruption' };
@@ -41,6 +45,7 @@ const state = {
     incidentsRev: null,
     incidents: [],
     incidentsLoaded: false,
+    alerts: null,
     filter: 'all',
     selectedIncident: null,
     reports: [],
@@ -277,6 +282,7 @@ function refreshView() {
     loadTelemetry();
     if (v === 'overview') { loadHistory(); renderIncidentViews(); }
     if (v === 'incidents') { loadIncidents(); loadReports(); }
+    if (v === 'alerts') loadAlerts();
     if (v === 'timemachine') { loadTransactions(); loadSnapshots(); }
 }
 
@@ -350,6 +356,11 @@ function renderStatus(data) {
     navOpen.hidden = !data.incidents.length;
     navOpen.textContent = String(data.incidents.length);
     navOpen.title = `${data.incidents.length} open`;
+
+    const navAlerts = $('nav-alerts');
+    navAlerts.hidden = !data.alerts.firing;
+    navAlerts.textContent = String(data.alerts.firing);
+    navAlerts.title = `${data.alerts.firing} firing`;
 
     renderBanner(data);
     renderWatchdog(data);
@@ -986,6 +997,57 @@ function renderLifecycle(incident) {
             <span class="lc-seg" data-part="open" style="flex-grow:${open}"${incident.status === 'open' ? ' data-live' : ''} title="Open"></span>
         </div>
         <div class="lc-labels"><span><b>Started</b> ${esc(fmtTime(incident.started_at))}</span><span><b>Detected</b> after ${esc(fmtDuration(incident.ttd_sec))}</span><span><b>${incident.status === 'open' ? 'Still open' : incident.status === 'interrupted' ? 'Interrupted' : 'Resolved'}</b>${incident.ttr_sec !== null ? ` after ${esc(fmtDuration(incident.ttr_sec))}` : ''}</span></div>`;
+}
+
+// ---------- Alerts ----------
+
+async function loadAlerts() {
+    const r = await api('GET', '/api/alerts');
+    if (!r.ok) {
+        // Keep the last good data on screen; only say so when there is none yet.
+        if (!state.alerts) setHTML($('alert-list'), `<li class="empty-box">${icon('bell')}<span>Could not load the alert rules: ${esc(r.detail)} It retries when the server answers.</span></li>`);
+        return;
+    }
+    state.alerts = r.data;
+    renderAlerts(r.data);
+}
+
+function alertRow(rule) {
+    const since = rule.state === 'pending' || rule.state === 'firing' ? `since ${fmtTime(rule.since)}`
+        : rule.state === 'resolved' ? `cleared ${fmtTime(rule.changed_at)}` : 'not triggered';
+    const value = rule.value === null ? 'no data yet' : `now ${rule.value}`;
+    return `<li class="alert-row" data-state="${esc(rule.state)}">
+        <div class="row-main">
+            <span class="row-title">${esc(rule.name)} <span class="badge" data-tone="${SEVERITY_TONES[rule.severity]}">${esc(rule.severity)}</span></span>
+            <span class="alert-cond">${esc(rule.condition)}</span>
+        </div>
+        <div class="alert-state"><span class="badge" data-tone="${ALERT_TONES[rule.state]}">${ALERT_LABELS[rule.state]}</span><span>${esc(value)}</span><span>${esc(since)}</span></div>
+        ${rule.description ? `<span class="alert-desc">${esc(rule.description)}</span>` : ''}
+    </li>`;
+}
+
+function renderAlerts(data) {
+    $('rule-count').textContent = String(data.rules.length);
+    if (!data.rules.length) {
+        setHTML($('alert-list'), `<li class="empty-box">${icon('bell')}<span>No alert rules are loaded, so nothing can alert. Add rules to <code>target_app/alert_rules.json</code> and restart.</span></li>`);
+    } else {
+        setHTML($('alert-list'), data.rules.map(alertRow).join(''));
+    }
+    const errors = $('rule-errors');
+    errors.hidden = !data.errors.length;
+    errors.textContent = data.errors.join(' ');
+    const mode = $('notify-mode');
+    mode.dataset.tone = data.webhook_configured ? 'ok' : 'neutral';
+    mode.textContent = data.webhook_configured ? 'Webhook on' : 'Log only';
+    $('notify-note').textContent = data.webhook_configured
+        ? `Firing and resolved alerts are posted to the configured webhook (Slack and Discord compatible), at most ${CONFIG.notifyMaxPerMin} a minute, and the same rule at most once every ${CONFIG.notifyMinIntervalSec} s.`
+        : 'No webhook is set, so alerts only appear here and in the server log. To send them to Slack or Discord, set DEEPBELL_ALERT_WEBHOOK_URL.';
+    if (!data.history.length) {
+        setHTML($('alert-history'), `<p class="empty-box">${icon('check')}<span>No alert has changed state since the server started. Inject a fault in the Chaos Lab and watch a rule go pending, then firing.</span></p>`);
+        return;
+    }
+    setHTML($('alert-history'), `<ol class="timeline">${data.history.map(e => `
+        <li data-type="${esc(e.state)}"><time datetime="${esc(e.at)}">${esc(fmtTime(e.at))}</time><span class="tl-type">${esc(ALERT_LABELS[e.state])}</span><span class="tl-text">${esc(e.text)}</span></li>`).join('')}</ol>`);
 }
 
 // ---------- KPI tiles ----------
@@ -2094,6 +2156,7 @@ document.addEventListener('DOMContentLoaded', () => {
     loadReports();
     schedulePoll();
     every(15000, () => { if (state.view === 'overview') loadHistory(); });
+    every(2000, () => { if (state.view === 'alerts') loadAlerts(); });
     every(10000, () => { if (state.view === 'timemachine') { loadTransactions(); loadSnapshots(); } });
     window.addEventListener('resize', () => {
         clearTimeout(state.resizeTimer);

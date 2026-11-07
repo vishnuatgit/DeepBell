@@ -24,6 +24,7 @@ Open it and press **Run the guided demo**. The demo is one shared instance on Re
 - **Self-monitoring watchdog.** A background thread samples the process's own CPU and resident memory every 2 s with `psutil` and scores each sample against a learned baseline (see [Detection logic](#detection-logic)).
 - **Incidents and timelines.** Every incident records when it started (the injected fault, or its first anomalous sample), when it was detected and when it resolved, plus the reports and recovery actions in between. The Incidents view lists them with filters and shows each one's time to detect and time to recover, a lifecycle bar drawn to scale and its timeline. Times are computed from the server's own timestamps and labelled as demo measurements.
 - **Incident reports.** Each incident gets a Markdown report: a deterministic built-in template by default, or Google Gemini when `GOOGLE_API_KEY` is set (with the template as fallback). The template describes only the incident's own fault: a database report never borrows a memory leak's samples. Every report is labelled with what wrote it (Gemini, template, template fallback, or the example written at startup) and downloads as `.md` with the incident's timeline and measured times appended.
+- **Alert rules.** Rules in [`target_app/alert_rules.json`](target_app/alert_rules.json) (metric, `>` or `<`, threshold, for-duration, severity) are checked on every sample and move through pending, firing and resolved. The shipped rules fire on each Chaos Lab fault. The Alerts view shows each rule's state and the recent changes; `GET /api/alerts` returns the same. Set `DEEPBELL_ALERT_WEBHOOK_URL` to post firing and resolved alerts to a Slack or Discord webhook (rate-limited, sent from a background thread); without it they are only logged. See [docs/walkthroughs/02-alert-rules.md](docs/walkthroughs/02-alert-rules.md).
 - **Status strip.** Uptime-style bars for the last 30 minutes, built from the metrics history: healthy, flagged samples without an incident, incident open, synthetic warm-up, no data. A bar with an incident links to it.
 - **Live Telemetry.** CPU and memory over 2 or 10 minutes, the detector's baseline and streaks, and a CPU-against-memory scatter plot that shows which samples crossed an alert line and became candidates for the Isolation Forest.
 - **Time Machine.** The SQLite database is copied every 30 s when its contents changed (newest 10 kept, each integrity-checked). The Time Machine lists each snapshot with its size, whether it passes `PRAGMA quick_check` and how many transactions it holds, says whether the newest one holds the current data, and restores any of them in one click after a confirmation. A corrupt database is restored automatically at startup.
@@ -172,6 +173,8 @@ All variables are optional. See `.env.example`.
 | `DEEPBELL_REPORTS_DIR` | `reports/` | Folder for incident reports. |
 | `DEEPBELL_ENV_FILE` | `.env` | Settings file read at startup on local runs (never in public demo mode). |
 | `DEEPBELL_SEED` | `1` | Set to `0` to skip the startup seed data. |
+| `DEEPBELL_ALERT_WEBHOOK_URL` | empty | Slack or Discord style incoming-webhook URL for alert notifications. Without it alerts are only shown in the UI and logged. Treat it as a secret: set it in the host's environment, never commit it. |
+| `DEEPBELL_ALERT_RULES_FILE` | `target_app/alert_rules.json` | Alert rules file to load instead of the shipped one. |
 | `DEEPBELL_CPU_CORES` | detected | CPU cores available to the app, used to scale CPU %. Read from the container's cgroup quota when unset. |
 | `DEEPBELL_DISABLE_WORKERS` | empty | Set to `1` to skip the telemetry and snapshot threads. |
 | `HOST`, `PORT` | `127.0.0.1`, `8000` | Address and port used by `run_all.py`. The Docker image reads `PORT`. |
@@ -233,6 +236,7 @@ DeepBell/
 | GET | `/healthz` | Liveness check |
 | GET | `/api/status` | Health, open incidents, last sample and its time, baseline, detector streaks, database state, fault cooldowns, guided-demo progress, the live pipeline (`pipeline`), the newest snapshot and whether it holds the current data, and uptime. `?events_after=N` also returns server events newer than N. |
 | GET | `/api/status/history?minutes=&bars=` | Status-strip bars (default 30 minutes in 60 bars) and the share of healthy live samples |
+| GET | `/api/alerts` | Alert rules with their state (`ok`, `pending`, `firing`, `resolved`), the newest state changes, problems found in the rules file and whether a webhook is configured |
 | GET | `/metrics` | Prometheus metrics (text format) |
 | GET | `/api/metrics?limit=` | Latest telemetry samples, newest first (default 15, at most 400) |
 | GET | `/api/incidents?limit=` | Incident history, newest first, with timelines and times to detect and recover |

@@ -12,6 +12,7 @@ from collections import deque
 from datetime import UTC, datetime
 
 from . import config
+from .alert_rules import AlertEngine
 from .detection import Detector
 
 # Locks
@@ -27,6 +28,9 @@ last_cpu = 0.0
 last_ram = 0.0
 last_sample_at: datetime | None = None  # wall-clock time of the newest telemetry sample
 started_at = datetime.now(UTC)  # when this process started serving (reset by startup_event)
+
+# Alert rules (loaded from alert_rules.json at startup)
+alert_engine = AlertEngine()
 
 # Incidents
 open_incidents: dict[str, dict] = {}

@@ -85,6 +85,7 @@
         <nav class="nav" id="nav" aria-label="Views">
             <a class="nav-item" href="#overview" data-view="overview"><svg class="icon" aria-hidden="true"><use href="#i-overview"/></svg>Overview</a>
             <a class="nav-item" href="#incidents" data-view="incidents"><svg class="icon" aria-hidden="true"><use href="#i-incident"/></svg>Incidents<span class="nav-count" id="nav-open" hidden></span></a>
+            <a class="nav-item" href="#alerts" data-view="alerts"><svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>Alerts<span class="nav-count" id="nav-alerts" hidden></span></a>
             <a class="nav-item" href="#telemetry" data-view="telemetry"><svg class="icon" aria-hidden="true"><use href="#i-telemetry"/></svg>Live Telemetry</a>
             <a class="nav-item" href="#chaos" data-view="chaos"><svg class="icon" aria-hidden="true"><use href="#i-chaos"/></svg>Chaos Lab</a>
             <a class="nav-item" href="#timemachine" data-view="timemachine"><svg class="icon" aria-hidden="true"><use href="#i-history"/></svg>Time Machine</a>
@@ -423,6 +424,31 @@
                     {% endif %}
                     {% endif %}
                     <article class="md" id="report-body">{% if not report %}<p class="empty-state">No incident reports yet. Run the guided demo or inject a fault in the Chaos Lab to create one.</p>{% endif %}</article>
+                </section>
+            </div>
+        </section>
+
+        <!-- Alerts -->
+        <section class="view" id="view-alerts" aria-labelledby="view-title" hidden>
+            <p class="view-lead">Alert rules watch one metric each. A rule is <strong>pending</strong> while its condition is true but has not lasted long enough, <strong>firing</strong> once it has lasted its full duration, and <strong>resolved</strong> when the condition clears. The rules are read at startup from <code>target_app/alert_rules.json</code>: edit that file and restart to change them.</p>
+            <div class="grid">
+                <section class="panel col-7" aria-labelledby="rules-title">
+                    <div class="panel-header">
+                        <h2 id="rules-title">Rules <span class="count-pill" id="rule-count">0</span></h2>
+                        <span class="badge" id="notify-mode" data-tone="neutral">Checking…</span>
+                    </div>
+                    <p class="note" id="rule-errors" hidden></p>
+                    <ul class="alert-list" id="alert-list" aria-label="Alert rules">
+                        <li class="skeleton-row"></li><li class="skeleton-row"></li><li class="skeleton-row"></li>
+                    </ul>
+                    <p class="panel-sub" id="notify-note"></p>
+                </section>
+                <section class="panel col-5" aria-labelledby="alert-history-title">
+                    <div class="panel-header">
+                        <h2 id="alert-history-title">Recent changes</h2>
+                        <span class="panel-meta">newest first</span>
+                    </div>
+                    <div id="alert-history"><p class="empty-box">Loading…</p></div>
                 </section>
             </div>
         </section>

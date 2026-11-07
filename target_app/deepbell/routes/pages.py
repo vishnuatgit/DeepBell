@@ -59,6 +59,8 @@ async def read_dashboard(request: Request):
                 "demoLeakMb": config.DEMO_LEAK_MB,
                 "historyMinutes": config.HISTORY_MINUTES,
                 "historyBars": config.HISTORY_BARS,
+                "notifyMaxPerMin": config.NOTIFY_MAX_PER_MIN,
+                "notifyMinIntervalSec": config.NOTIFY_MIN_INTERVAL_SEC,
             },
         },
     )
