@@ -3825,8 +3825,43 @@ abbr[title] {
         height: 16px;
     }
 
+    /* The footer's status box, notes and links are redundant here; keep only the theme
+       toggle, as an icon button at the right end of the top bar. */
     .sidebar-footer {
+        display: block;
+        position: absolute;
+        top: 10px;
+        right: 12px;
+        padding: 0;
+        border-top: 0;
+    }
+
+    .sidebar-footer .status-box,
+    .sidebar-footer .env-note,
+    .sidebar-footer .sidebar-links a {
         display: none;
+    }
+
+    /* Keep the label for screen readers. */
+    .theme-toggle span {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip: rect(0 0 0 0);
+        white-space: nowrap;
+    }
+
+    .theme-toggle {
+        justify-content: center;
+        min-width: 40px;
+        min-height: 40px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+    }
+
+    .sidebar-top {
+        padding-right: 48px;
     }
 
     .main {

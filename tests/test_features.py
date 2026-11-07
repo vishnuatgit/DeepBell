@@ -94,6 +94,16 @@ def test_dashboard_explains_itself(client):
     assert client.get("/static/app.js").status_code == 200
 
 
+def test_theme_toggle_stays_reachable_on_phones(client):
+    """The sidebar footer is hidden on phones; the theme toggle must survive that rule."""
+    assert 'id="theme-toggle"' in client.get("/").text
+    css = client.get("/static/styles.css").text
+    phone = css[css.index("@media (max-width: 900px)") :]
+    footer = phone[phone.index(".sidebar-footer {") :]
+    footer = footer[: footer.index("}")]
+    assert "display: none" not in footer
+
+
 # --- Incident timeline ---
 
 
