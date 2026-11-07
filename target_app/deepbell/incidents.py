@@ -6,6 +6,7 @@ import sqlite3
 from datetime import datetime, timedelta
 
 from . import config, db, eventlog, incident_store, metrics, rca, runtime, timeutil
+from .alert_rules import INCIDENT_KINDS
 
 
 def incident_start(kind: str, now: datetime) -> tuple[str, list[dict]]:
@@ -37,6 +38,11 @@ def open_incident(kind: str, detail: str = "") -> bool:
             return False
         started, events = incident_start(kind, now)
         detected = timeutil.iso(now)
+        # Alerts that already changed state while the anomaly built up (for example "pending").
+        events += [
+            {"at": e["at"], "type": "alert", "text": f"Alert: {e['text']}"}
+            for e in runtime.alert_engine.events_since(started, kind)
+        ]
         events.append({"at": detected, "type": "detected", "text": f"Incident opened. {detail}"})
         try:
             incident_id = incident_store.insert_incident(kind, started, detected, detail, events)
@@ -95,12 +101,21 @@ def note_fault(kind: str, text: str) -> None:
     incident_store.update_incident(incident["id"], ("fault", text))
 
 
-def note_action(kind: str, text: str) -> None:
-    """Add a recovery action to the open incident of that kind, if there is one."""
+def note_action(kind: str, text: str, event_type: str = "action") -> None:
+    """Add a recovery action ("action") or a snapshot restore ("restore") to the open incident
+    of that kind, if there is one."""
     with runtime.lock:
         incident = runtime.open_incidents.get(kind)
     if incident:
-        incident_store.update_incident(incident["id"], ("action", text))
+        incident_store.update_incident(incident["id"], (event_type, text))
+
+
+def note_alert(event: dict) -> None:
+    """Put an alert state change on the timeline of each open incident it belongs to."""
+    with runtime.lock:
+        open_now = [runtime.open_incidents.get(k) for k in INCIDENT_KINDS[event["metric"]]]
+    for incident in filter(None, open_now):
+        incident_store.update_incident(incident["id"], ("alert", f"Alert: {event['text']}"))
 
 
 def set_db_error(error: str | None) -> None:

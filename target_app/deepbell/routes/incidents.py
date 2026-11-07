@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter, HTTPException
 
-from .. import config, incident_store, overview, reports
+from .. import config, correlation, incident_store, overview, reports
 
 router = APIRouter()
 
@@ -25,8 +25,11 @@ def get_incident_stats():
 
 @router.get("/api/incidents/{incident_id}", tags=["incidents"])
 def get_incident_detail(incident_id: int):
+    """One incident with its merged timeline and a heuristic `likely_cause` (trigger, evidence,
+    confidence)."""
     incident = incident_store.get_incident(incident_id)
     if incident is None:
         raise HTTPException(status_code=404, detail="No such incident.")
     incident["report_available"] = incident["report"] in set(reports.list_reports())
+    incident["likely_cause"] = correlation.analyse(incident)
     return incident

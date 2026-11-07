@@ -7,6 +7,7 @@ from datetime import UTC, datetime, timedelta
 
 from . import (
     config,
+    correlation,
     db,
     incident_store,
     timeutil,
@@ -85,6 +86,7 @@ def build_template_report(
     incident: str = "",
     detail: str = "",
     timeline: list[dict] | None = None,
+    likely: dict | None = None,
 ) -> str:
     """Deterministic incident report used when no Gemini API key is configured."""
     if not rows and not incident:
@@ -157,6 +159,8 @@ def build_template_report(
             telemetry_table(rows),
             "",
         ]
+    if likely:
+        parts += [correlation.markdown_section(likely)]
     parts += ["## Likely cause", "", cause, "", "## Recommended actions", ""]
     parts += [f"- {a}" for a in actions]
     return "\n".join(parts) + "\n"
@@ -267,6 +271,8 @@ def report_for_download(name: str) -> str | None:
         "|---|---|",
     ]
     lines += [f"| {e['at']} | {e['text']} |" for e in incident["timeline"]]
+    if "## Correlation analysis (heuristic)" not in content:
+        lines += ["", correlation.markdown_section(correlation.analyse(incident)).rstrip(), ""]
     ttd, ttr = incident["ttd_sec"], incident["ttr_sec"]
     lines += [
         "",

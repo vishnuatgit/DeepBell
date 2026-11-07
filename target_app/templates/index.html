@@ -403,7 +403,15 @@
                         </div>
                         <dl class="measures" id="detail-measures"></dl>
                         <div class="lifecycle" id="detail-lifecycle" aria-hidden="true"></div>
-                        <h3 class="sub-title">Timeline</h3>
+                        <section class="cause" id="detail-cause" aria-labelledby="cause-title">
+                            <div class="cause-head">
+                                <h3 class="sub-title" id="cause-title">Likely cause</h3>
+                                <span class="badge" data-tone="neutral">Heuristic</span>
+                                <span class="badge" id="cause-confidence" hidden></span>
+                            </div>
+                            <div id="cause-body"><p class="cause-note">Working out the likely cause…</p></div>
+                        </section>
+                        <h3 class="sub-title">Timeline <span class="panel-meta">merged: faults, samples, alerts, reports, restores</span></h3>
                         <ol class="timeline" id="detail-timeline"></ol>
                     </div>
                     <div class="report-head">

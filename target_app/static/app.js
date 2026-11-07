@@ -22,8 +22,9 @@ const STATUS_TONES = { open: 'bad', resolved: 'ok', interrupted: 'neutral' };
 const STATUS_LABELS = { open: 'Open', resolved: 'Resolved', interrupted: 'Interrupted' };
 const EVENT_LABELS = {
     fault: 'Fault', flagged: 'Flagged', detected: 'Detected', report: 'Report',
-    action: 'Action', resolved: 'Resolved', interrupted: 'Restart',
+    action: 'Action', alert: 'Alert', restore: 'Restore', resolved: 'Resolved', interrupted: 'Restart',
 };
+const CONFIDENCE_TONES = { high: 'ok', medium: 'warn', low: 'info', unknown: 'neutral' };
 const SOURCE_LABELS = {
     gemini: ['Gemini via LangChain', 'violet'],
     template: ['Built-in template', 'info'],
@@ -46,6 +47,8 @@ const state = {
     incidents: [],
     incidentsLoaded: false,
     alerts: null,
+    causeKey: null, // the incident, status and timeline length the cause on screen was computed for
+    causeFor: null,
     filter: 'all',
     selectedIncident: null,
     reports: [],
@@ -978,7 +981,44 @@ function renderDetail(incident) {
         + measure('Time to recover', incident.status === 'open' ? 'open' : fmtDuration(incident.ttr_sec), 'is-measure');
     renderLifecycle(incident);
     $('detail-timeline').innerHTML = incident.timeline.map(e => `
-        <li data-type="${esc(e.type)}"><time datetime="${esc(e.at)}">${esc(fmtTime(e.at))}</time><span class="tl-type">${esc(EVENT_LABELS[e.type] || e.type)}</span><span class="tl-text">${esc(e.text)}</span></li>`).join('');
+        <li data-type="${esc(e.type)}"><time datetime="${esc(e.at)}">${esc(fmtTime(e.at))}<small>+${esc(fmtDuration(e.offset_sec ?? 0))}</small></time><span class="tl-type">${esc(EVENT_LABELS[e.type] || e.type)}</span><span class="tl-text">${esc(e.text)}</span></li>`).join('');
+    loadCause(incident);
+}
+
+// The likely cause is worked out by the server (a heuristic over the merged timeline and the
+// telemetry). It is fetched when an incident is selected and again whenever its timeline grows
+// or its status changes, never on every poll.
+async function loadCause(incident) {
+    const key = `${incident.id}:${incident.status}:${incident.timeline.length}`;
+    if (state.causeKey === key) return;
+    state.causeKey = key;
+    if (state.causeFor !== incident.id) {
+        $('cause-confidence').hidden = true;
+        setHTML($('cause-body'), '<p class="cause-note">Working out the likely cause…</p>');
+    }
+    const r = await api('GET', `/api/incidents/${incident.id}`);
+    if (state.selectedIncident !== incident.id) return; // another incident was selected meanwhile
+    if (!r.ok) {
+        state.causeKey = null; // try again on the next change
+        setHTML($('cause-body'), `<p class="cause-note">Could not work out the likely cause: ${esc(r.detail)}</p>`);
+        return;
+    }
+    state.causeFor = incident.id;
+    renderCause(r.data.likely_cause);
+}
+
+function renderCause(cause) {
+    const badge = $('cause-confidence');
+    badge.hidden = false;
+    badge.dataset.tone = CONFIDENCE_TONES[cause.confidence];
+    badge.textContent = `${cause.confidence} confidence`;
+    const list = items => `<ul class="cause-list">${items.map(i => `<li>${esc(i)}</li>`).join('')}</ul>`;
+    setHTML($('cause-body'), `
+        <p class="cause-summary">${esc(cause.summary)}</p>
+        <p class="cause-note">${esc(cause.confidence_reason)}</p>
+        ${cause.evidence.length ? `<h4 class="cause-label">Evidence</h4>${list(cause.evidence)}` : ''}
+        ${cause.not_found.length ? `<h4 class="cause-label">Checked, not found</h4>${list(cause.not_found)}` : ''}
+        <p class="cause-note cause-disclaimer">${esc(cause.disclaimer)}</p>`);
 }
 
 // A to-scale bar: started -> detected (time to detect), detected -> resolved (time to recover).

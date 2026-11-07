@@ -4270,6 +4270,83 @@ abbr[title] {
     grid-row: 1 / span 2;
 }
 
+/* ---------- Likely cause and merged timeline ---------- */
+
+.cause {
+    margin-top: 22px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    min-height: 120px;
+}
+
+.cause-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.cause-head .sub-title {
+    margin: 0 4px 0 0;
+}
+
+.cause-summary {
+    margin-top: 12px;
+    font-weight: 600;
+    color: var(--heading);
+}
+
+.cause-note {
+    margin-top: 6px;
+    font-size: 0.82rem;
+    color: var(--text-2);
+}
+
+.cause-disclaimer {
+    color: var(--text-3);
+    font-size: 0.76rem;
+}
+
+.cause-label {
+    margin-top: 14px;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text-3);
+}
+
+.cause-list {
+    margin-top: 6px;
+    padding-left: 1.2em;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 0.84rem;
+    color: var(--text-2);
+}
+
+.sub-title .panel-meta {
+    display: block;
+    margin-top: 2px;
+    text-transform: none;
+    letter-spacing: 0;
+    font-weight: 400;
+}
+
+.timeline time small {
+    display: block;
+    font-size: 0.68rem;
+    color: var(--text-3);
+    opacity: 0.85;
+}
+
+.timeline li[data-type="alert"] { --tl: var(--yellow); }
+.timeline li[data-type="restore"] { --tl: var(--purple); }
+
+[data-theme="light"] .timeline li[data-type="alert"] .tl-type { color: var(--warn-text); }
+
 @media (prefers-reduced-motion: reduce) {
     *,
     *::before,
