@@ -125,12 +125,14 @@ def test_incident_timeline_measures_detect_and_resolve(client, wall, no_reports)
     assert incident["started_at"] == timeutil.iso(fault_at)
     assert incident["ttd_sec"] == 3
     assert incident["ttr_sec"] == 2 * config.CLOSE_AFTER
-    assert [e["type"] for e in incident["timeline"]] == [
+    # The alert rules loaded at startup add their own events to the same timeline.
+    assert [e["type"] for e in incident["timeline"] if e["type"] != "alert"] == [
         "fault",
         "flagged",
         "detected",
         "resolved",
     ]
+    assert any(e["type"] == "alert" for e in incident["timeline"])
     assert "alert above" in incident["timeline"][1]["text"]
     assert no_reports == ["memory_leak"]
     assert client.get(f"/api/incidents/{incident['id']}").json()["id"] == incident["id"]
@@ -150,7 +152,10 @@ def test_without_a_fault_the_first_flagged_sample_is_the_start(client, wall, no_
     assert incident["started_at"] == timeutil.iso(first)
     assert incident["ttd_sec"] == config.SAMPLE_INTERVAL_SEC
     assert incident["ttr_sec"] is None
-    assert [e["type"] for e in incident["timeline"]] == ["flagged", "detected"]
+    assert [e["type"] for e in incident["timeline"] if e["type"] != "alert"] == [
+        "flagged",
+        "detected",
+    ]
     status = client.get("/api/status").json()
     assert status["incidents"][0]["id"] == incident["id"]
     assert status["incidents_rev"] > 0
@@ -178,7 +183,7 @@ def test_rollback_is_recorded_on_the_database_incident(client, no_reports):
     incident = client.get("/api/incidents").json()[0]
     assert incident["status"] == "resolved"
     types = [e["type"] for e in incident["timeline"]]
-    assert types == ["fault", "detected", "action", "resolved"]
+    assert types == ["fault", "detected", "restore", "resolved"]
     assert snapshot in incident["timeline"][2]["text"]
 
 

@@ -17,11 +17,13 @@ INCIDENT_COLUMNS = (
 EVENT_ORDER = {
     "fault": 0,
     "flagged": 1,
-    "detected": 2,
-    "report": 3,
-    "action": 4,
-    "resolved": 5,
-    "interrupted": 6,
+    "alert": 2,
+    "detected": 3,
+    "report": 4,
+    "action": 5,
+    "restore": 5,
+    "resolved": 6,
+    "interrupted": 7,
 }
 
 
@@ -35,6 +37,8 @@ def incident_from_row(row) -> dict:
     events = sorted(
         json.loads(timeline or "[]"), key=lambda e: (e["at"], EVENT_ORDER.get(e["type"], 9))
     )
+    for event in events:  # seconds since the incident started, for the timeline view
+        event["offset_sec"] = timeutil.seconds_between(started, event["at"]) or 0
     return {
         "id": incident_id,
         "kind": kind,

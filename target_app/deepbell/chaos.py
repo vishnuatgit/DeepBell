@@ -115,7 +115,11 @@ def corrupt_database(source: str) -> bool:
 def rollback_to(filename: str, source: str = "Rollback") -> str | None:
     """Restore a snapshot and re-check the database. Returns the remaining error, if any."""
     snapshots.restore_snapshot(filename)
-    incidents.note_action("db_corruption", f"{source}: database restored from snapshot {filename}.")
+    incidents.note_action(
+        "db_corruption",
+        f"{source}: database restored from snapshot {filename}.",
+        event_type="restore",
+    )
     eventlog.log_event("success", f"{source}: database restored from snapshot {filename}.")
     return incidents.refresh_db_state()
 

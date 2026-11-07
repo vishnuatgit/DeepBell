@@ -26,6 +26,15 @@ METRICS = {
     "anomaly_score": ("Anomaly score", ""),
     "database_error": ("Database error", ""),
 }
+# Which incident kinds an alert on this metric belongs to (used to put alert events on the
+# timeline of the right incident).
+INCIDENT_KINDS = {
+    "cpu_percent": ("cpu_spike",),
+    "memory_mb": ("memory_leak",),
+    "memory_over_baseline_mb": ("memory_leak",),
+    "anomaly_score": ("cpu_spike", "memory_leak"),
+    "database_error": ("db_corruption",),
+}
 CONDITIONS = (">", "<")
 SEVERITIES = ("info", "warning", "critical")
 MAX_RULES = 50
@@ -189,6 +198,7 @@ class AlertEngine:
         event = {
             "at": timeutil.iso(timeutil.utcnow()),
             "rule": rule.name,
+            "metric": rule.metric,
             "state": new,
             "severity": rule.severity,
             "value": value,
@@ -196,6 +206,13 @@ class AlertEngine:
         }
         self.history.append(event)
         return event
+
+    def events_since(self, at: str, kind: str) -> list[dict]:
+        """State changes at or after `at` (ISO time) that belong to incidents of this kind."""
+        with self.lock:
+            return [
+                e for e in self.history if e["at"] >= at and kind in INCIDENT_KINDS[e["metric"]]
+            ]
 
     def counts(self) -> dict:
         with self.lock:

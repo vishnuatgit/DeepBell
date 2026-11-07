@@ -108,9 +108,11 @@ def record_sample(cpu: float, ram: float, now: float | None = None) -> list[str]
             f"{config.OPEN_AFTER} anomalous samples in a row."
         )
         incidents.open_incident(kind, detail)
+    # Alerts are evaluated before incidents close, so an alert that clears with the incident
+    # still lands on its timeline.
+    alerts.evaluate_sample(cpu, ram, kinds, time.monotonic() if now is None else now)
     for kind in closed:
         incidents.close_incident(kind)
-    alerts.evaluate_sample(cpu, ram, kinds, time.monotonic() if now is None else now)
     return kinds
 
 

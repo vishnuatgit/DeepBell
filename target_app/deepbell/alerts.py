@@ -2,7 +2,7 @@
 and send every state change to the console, the log, the metrics and the notifier.
 """
 
-from . import alert_rules, config, eventlog, metrics, notifications, runtime
+from . import alert_rules, config, eventlog, incidents, metrics, notifications, runtime
 
 EVENT_LEVELS = {"pending": "warn", "firing": "error", "resolved": "success"}
 
@@ -38,6 +38,7 @@ def evaluate_sample(cpu: float, ram: float, kinds: list[str], now: float) -> lis
         for event in events:
             metrics.ALERT_TRANSITIONS.labels(event["state"], event["severity"]).inc()
             eventlog.log_event(EVENT_LEVELS[event["state"]], f"Alert: {event['text']}")
+            incidents.note_alert(event)
             notifications.notifier.notify(event)
         return events
     except Exception as e:
