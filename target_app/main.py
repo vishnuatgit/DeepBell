@@ -22,6 +22,7 @@ async def lifespan(_app: FastAPI):
 
 OPENAPI_TAGS = [
     {"name": "status", "description": "Live health, telemetry samples and the status history."},
+    {"name": "alerts", "description": "Alert rules, their states and recent state changes."},
     {"name": "incidents", "description": "Incident history with timelines and measured times."},
     {"name": "reports", "description": "Markdown incident reports (template or Gemini)."},
     {"name": "database", "description": "Sample transactions, snapshots and rollback."},

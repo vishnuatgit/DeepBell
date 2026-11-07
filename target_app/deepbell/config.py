@@ -68,6 +68,16 @@ CLOSE_AFTER = 3  # normal samples in a row before it closes
 METRICS_KEEP = 10_000
 METRICS_PAGE_MAX = 400  # samples one /api/metrics call returns at most (over 13 minutes)
 
+# Alert rules: a versioned JSON file shipped with the app, and the notification limits
+ALERT_RULES_FILE = os.getenv("DEEPBELL_ALERT_RULES_FILE") or os.path.join(
+    BASE_DIR, "alert_rules.json"
+)
+ALERT_HISTORY_KEEP = 100  # state changes kept for the Alerts view
+NOTIFY_MIN_INTERVAL_SEC = 60  # the same rule notifies "firing" at most this often
+NOTIFY_MAX_PER_MIN = 10  # webhook messages in any 60 seconds, all rules together
+NOTIFY_QUEUE_MAX = 50
+WEBHOOK_TIMEOUT_SEC = 5
+
 # Snapshots, reports and data
 SNAPSHOT_INTERVAL_SEC = 30
 SNAPSHOTS_KEEP = 10

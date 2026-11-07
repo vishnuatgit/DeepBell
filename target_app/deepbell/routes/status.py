@@ -56,6 +56,7 @@ def get_system_status(events_after: int | None = None):
         "status": status,
         "state": state,
         "incidents": incidents,
+        "alerts": runtime.alert_engine.counts(),
         "anomaly_score": runtime.latest_anomaly_score,
         "cpu": runtime.last_cpu,
         "ram": runtime.last_ram,

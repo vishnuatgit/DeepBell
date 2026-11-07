@@ -46,6 +46,19 @@ FAULTS = Counter(
 REPORTS = Counter(
     "deepbell_reports_generated", "Incident reports written.", ["source"], registry=REGISTRY
 )
+ALERTS_FIRING = Gauge("deepbell_alerts_firing", "Alerts firing right now.", registry=REGISTRY)
+ALERT_TRANSITIONS = Counter(
+    "deepbell_alert_transitions",
+    "Alert state changes.",
+    ["state", "severity"],
+    registry=REGISTRY,
+)
+ALERT_NOTIFICATIONS = Counter(
+    "deepbell_alert_notifications",
+    "Alert notifications by result (sent, failed, suppressed, logged).",
+    ["result"],
+    registry=REGISTRY,
+)
 SNAPSHOT_RESTORES = Counter(
     "deepbell_snapshot_restores", "Database snapshot restores.", registry=REGISTRY
 )
@@ -57,10 +70,14 @@ for _kind in config.INCIDENT_NAMES:
 for _source in ("template", "Gemini"):
     REPORTS.labels(_source)
 
+for _result in ("sent", "failed", "suppressed", "logged"):
+    ALERT_NOTIFICATIONS.labels(_result)
+
 CPU.set_function(lambda: runtime.last_cpu)
 MEMORY.set_function(lambda: runtime.last_ram)
 ANOMALY_SCORE.set_function(lambda: runtime.latest_anomaly_score)
 INCIDENTS_OPEN.set_function(lambda: len(runtime.open_incidents))
+ALERTS_FIRING.set_function(lambda: runtime.alert_engine.counts()["firing"])
 
 
 def render() -> bytes:

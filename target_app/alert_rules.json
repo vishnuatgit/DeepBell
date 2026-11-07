@@ -1,0 +1,40 @@
+{
+  "rules": [
+    {
+      "name": "High CPU",
+      "metric": "cpu_percent",
+      "condition": ">",
+      "threshold": 50,
+      "for_sec": 2,
+      "severity": "warning",
+      "description": "CPU is above 50 % of the available CPU for two samples in a row (about 2 to 4 seconds). The Chaos Lab CPU spike triggers it."
+    },
+    {
+      "name": "Memory above baseline",
+      "metric": "memory_over_baseline_mb",
+      "condition": ">",
+      "threshold": 30,
+      "for_sec": 4,
+      "severity": "warning",
+      "description": "Resident memory is more than 30 MB above the learned baseline for three samples in a row. The Chaos Lab memory leak triggers it."
+    },
+    {
+      "name": "Watchdog flagging samples",
+      "metric": "anomaly_score",
+      "condition": ">",
+      "threshold": 0,
+      "for_sec": 2,
+      "severity": "critical",
+      "description": "The watchdog (baseline check plus Isolation Forest) has flagged two samples in a row as anomalous, which is also when it opens an incident."
+    },
+    {
+      "name": "Database unhealthy",
+      "metric": "database_error",
+      "condition": ">",
+      "threshold": 0,
+      "for_sec": 0,
+      "severity": "critical",
+      "description": "The database fails its integrity check. The Chaos Lab database corruption triggers it; restoring a snapshot resolves it."
+    }
+  ]
+}

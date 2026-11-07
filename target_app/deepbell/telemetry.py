@@ -5,7 +5,7 @@ import random
 import time
 from datetime import datetime, timedelta
 
-from . import config, db, eventlog, incidents, runtime, timeutil
+from . import alerts, config, db, eventlog, incidents, runtime, timeutil
 
 
 def read_cpu_quota(cgroup_root: str = "/sys/fs/cgroup") -> float | None:
@@ -110,6 +110,7 @@ def record_sample(cpu: float, ram: float, now: float | None = None) -> list[str]
         incidents.open_incident(kind, detail)
     for kind in closed:
         incidents.close_incident(kind)
+    alerts.evaluate_sample(cpu, ram, kinds, time.monotonic() if now is None else now)
     return kinds
 
 

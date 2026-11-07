@@ -1,6 +1,7 @@
 """HTTP routes, one APIRouter per area of the API."""
 
 from . import (
+    alerts,
     chaos,
     demo,
     incidents,
@@ -18,6 +19,7 @@ ROUTERS = [
     pages.router,
     transactions.router,
     status.router,
+    alerts.router,
     metrics.router,
     incidents.router,
     reports.router,

@@ -5,6 +5,7 @@ import uuid
 from datetime import datetime, timedelta
 
 from . import (
+    alerts,
     config,
     db,
     eventlog,
@@ -60,6 +61,7 @@ def startup_event():
     runtime.started_at = timeutil.utcnow()
     # Verify (and if needed restore) the database before touching its schema:
     # init_db() raises on a corrupted file, which would crash every restart.
+    alerts.load_rules()
     snapshots.verify_and_heal_database()
     db.init_db()
     db.init_metrics_db()
