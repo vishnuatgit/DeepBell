@@ -91,10 +91,6 @@ def metric_crossings(
     return crossed
 
 
-def clock(dt: datetime) -> str:
-    return dt.strftime("%H:%M:%S") + " UTC"
-
-
 def result(trigger, summary, confidence, reason, evidence, checked) -> dict:
     return {
         "trigger": trigger,
@@ -152,16 +148,14 @@ def likely_cause(
                 evidence.append(conflict)
             elif -lead >= MOVED_FIRST_SEC:
                 evidence.append(
-                    f"{names[own_metric]} moved first ({clock(mine)}); "
+                    f"{names[own_metric]} moved first; "
                     f"{names[other_metric].lower()} followed {round(-lead)} s later."
                 )
             else:
-                evidence.append(
-                    f"CPU and memory crossed their alert lines together ({clock(mine)})."
-                )
+                evidence.append("CPU and memory crossed their alert lines together.")
         elif mine:
             evidence.append(
-                f"{names[own_metric]} crossed its alert line at {clock(mine)}; "
+                f"{names[own_metric]} crossed its alert line; "
                 f"{names[other_metric]} stayed within its normal range."
             )
 

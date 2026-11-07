@@ -59,9 +59,9 @@ def seed_demo_data(now: datetime | None = None) -> None:
 
 def startup_event():
     runtime.started_at = timeutil.utcnow()
+    alerts.load_rules()
     # Verify (and if needed restore) the database before touching its schema:
     # init_db() raises on a corrupted file, which would crash every restart.
-    alerts.load_rules()
     snapshots.verify_and_heal_database()
     db.init_db()
     db.init_metrics_db()

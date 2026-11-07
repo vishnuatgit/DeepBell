@@ -1,6 +1,7 @@
 """Incident correlation: the likely-cause rules, the merged timeline, the API and the report."""
 
 import random
+import re
 import time
 from datetime import UTC, datetime, timedelta
 
@@ -98,6 +99,23 @@ def test_if_the_other_metric_moved_first_confidence_drops():
     assert cause["confidence"] == "medium"
     assert any("CPU crossed its alert line 6 s before memory" in e for e in cause["evidence"])
     assert "partly disagree" in cause["confidence_reason"]
+
+
+def test_evidence_has_no_clock_times():
+    """Clock times would be UTC here while the timeline shows local time, so evidence uses
+    only offsets."""
+    inc = incident(
+        events=[event(0, "fault", LEAK), event(6, "flagged", "First anomalous sample.")],
+        detected=8,
+    )
+    for samples in (
+        moving(quiet_samples(), ram_at=0),  # memory alone
+        moving(quiet_samples(), cpu_at=0, ram_at=0),  # together
+        moving(quiet_samples(), cpu_at=6, ram_at=0),  # memory first
+    ):
+        cause = correlation.likely_cause(inc, samples, [])
+        assert any("crossed" in e or "moved first" in e for e in cause["evidence"])
+        assert not any(re.search(r"\d\d:\d\d:\d\d|UTC", e) for e in cause["evidence"])
 
 
 def test_an_earlier_metric_blip_that_ended_is_not_a_conflict():
