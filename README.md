@@ -10,9 +10,9 @@ Monitoring usually stops at an alert. DeepBell practises the steps after it: **d
 
 ## Live demo
 
-**[deepbell.onrender.com](https://deepbell.onrender.com)** (deployed from [`render.yaml`](render.yaml), see [Deploy on Render](#deploy-on-render)). Free hosting: the first visit can take about a minute to wake it up. Press **Run guided demo** to watch it leak memory, detect it, write a report and recover.
+**[deepbell.onrender.com](https://deepbell.onrender.com)** (deployed from [`render.yaml`](render.yaml), see [Deploy on Render](#deploy-on-render)). Free hosting: the first visit can take about a minute to wake it up. Press **Run the guided demo** to watch it leak memory, detect it, write a report and recover.
 
-Open it and press **Run the guided demo**. The demo is one shared instance on Render's free plan: everyone sees the same telemetry and incidents, and the first visit after 15 quiet minutes takes about a minute while the service wakes up.
+The demo is one shared instance on Render's free plan: everyone sees the same telemetry and incidents, and the first visit after 15 quiet minutes takes about a minute while the service wakes up.
 
 ![DeepBell's live console during the guided demo: a memory-leak incident is open, the How it works pipeline has lit up Sample, Detect and Report and shows that the demo releases the memory next, and the guided demo is on step 5 of 8](docs/screenshots/cover.png)
 
@@ -131,13 +131,13 @@ The image is based on `python:3.11-slim`, runs as an unprivileged user and start
 
 ## Monitoring with Prometheus and Grafana
 
-DeepBell serves its own metrics at `/metrics` (Prometheus text format; CPU and memory gauges, the latest anomaly score, incidents open and opened by kind, detection and recovery time histograms, fault injections, reports written and snapshot restores). To see them in Grafana on your machine (needs Docker):
+DeepBell serves its own metrics at `/metrics` (Prometheus text format; CPU and memory gauges, the latest anomaly score, incidents open and opened by kind, detection and recovery time histograms, fault injections, reports written, snapshot restores, alerts firing, alert state changes and alert notifications). To see them in Grafana on your machine (needs Docker):
 
 ```bash
 docker compose -f monitoring/docker-compose.yml up --build
 ```
 
-Then open Grafana at http://localhost:3000 (the DeepBell dashboard is the home page, no login needed), Prometheus at http://localhost:9090 and DeepBell at http://localhost:8000. Inject a fault in the Chaos Lab and watch the graphs; incident openings and fault injections appear as red and orange annotation lines. Stop it with `docker compose -f monitoring/docker-compose.yml down`. This stack is for local use only: the public demo only exposes `/metrics`. Details: [docs/walkthroughs/01-prometheus-grafana.md](docs/walkthroughs/01-prometheus-grafana.md).
+Then open Grafana at http://localhost:3000 (the DeepBell dashboard is the home page, no login needed), Prometheus at http://localhost:9090 and DeepBell at http://localhost:8000. Inject a fault in the Chaos Lab and watch the graphs; incident openings and fault injections appear as red and orange annotation lines. Stop it with `docker compose -f monitoring/docker-compose.yml down`. This stack is for local use only: the public demo serves `/metrics` but runs no Prometheus or Grafana. Details: [docs/walkthroughs/01-prometheus-grafana.md](docs/walkthroughs/01-prometheus-grafana.md).
 
 ## Tests
 
@@ -147,7 +147,7 @@ ruff check . && ruff format --check .
 pytest --cov=target_app
 ```
 
-89 tests. They use temporary directories, disable the background threads (or drive them with a fake clock) and replace the Gemini call with stubs, so they never touch the network. They cover the detector (jitter, spikes, held leaks, baseline refresh, warm-up), incident timelines and measured times, the live pipeline through a whole incident (and a new fault right after one resolves), the incident statistics, report sources, wording per fault kind, linking and download, the guided demo end to end (with a fast fake watchdog), the status strip, snapshots (readability, contents, freshness) and rollback, corruption detection, public demo mode, fault caps, cooldowns and auto-release, the OpenAPI tags and the main API endpoints. CI runs them on Python 3.11 and 3.12, lints with ruff, and builds and smoke-tests the Docker image.
+142 tests. They use temporary directories, disable the background threads (or drive them with a fake clock) and replace the Gemini call with stubs, so they never touch the network. They cover the detector (jitter, spikes, held leaks, baseline refresh, warm-up), incident timelines and measured times, the live pipeline through a whole incident (and a new fault right after one resolves), the incident statistics, report sources, wording per fault kind, linking and download, the guided demo end to end (with a fast fake watchdog), the status strip, snapshots (readability, contents, freshness) and rollback, corruption detection, public demo mode, fault caps, cooldowns and auto-release, the alert rules (validation, the pending, firing and resolved states with a fake clock, webhook limits), the likely-cause rules and the merged timeline, the `/metrics` output and the monitoring files, the OpenAPI tags and the main API endpoints. CI runs them on Python 3.11 and 3.12, lints with ruff, and builds and smoke-tests the Docker image.
 
 ## Deploy on Render
 
@@ -188,6 +188,7 @@ Default paths are relative to the project root. The Docker image sets the three 
 DeepBell/
 ├── target_app/
 │   ├── main.py              # Creates the FastAPI app and includes the routers (main:app)
+│   ├── alert_rules.json     # The shipped alert rules
 │   ├── deepbell/            # The application package
 │   │   ├── config.py        # Paths, environment variables, thresholds, caps and labels
 │   │   ├── runtime.py       # Process-wide state: locks, the detector, open incidents, demo run
@@ -198,6 +199,11 @@ DeepBell/
 │   │   ├── telemetry.py     # CPU quota, scoring samples, warm-up seed, pruning
 │   │   ├── incident_store.py # Incident rows and timelines in metrics.db
 │   │   ├── incidents.py     # Open (de-duplicated), time and close incidents
+│   │   ├── correlation.py   # The likely-cause heuristic for one incident
+│   │   ├── alert_rules.py   # Load and validate alert rules; the pending/firing/resolved engine
+│   │   ├── alerts.py        # Feeds each sample to the engine; sends state changes on
+│   │   ├── notifications.py # Optional webhook with rate limits (otherwise just the log)
+│   │   ├── metrics.py       # Prometheus metrics served at /metrics
 │   │   ├── reports.py       # Template reports and the report files
 │   │   ├── llm.py           # Gemini via LangChain: key lookup, lazy load, AI reports
 │   │   ├── rca.py           # Writes a report in the background (Gemini or template)
@@ -208,16 +214,21 @@ DeepBell/
 │   │   ├── workers.py       # Snapshot and watchdog threads
 │   │   ├── startup.py       # Startup checks, demo seed data, starts the workers
 │   │   └── routes/          # One APIRouter per area: pages, transactions, status,
-│   │                        #   incidents, reports, snapshots, settings, demo, chaos
+│   │                        #   alerts, metrics, incidents, reports, snapshots, settings,
+│   │                        #   demo, chaos
 │   ├── requirements.txt     # Pinned runtime dependencies
-│   ├── templates/index.html # The dashboard markup (one page, seven views)
+│   ├── templates/index.html # The dashboard markup (one page, eight views, the Settings view on local runs only)
 │   └── static/              # app.js (behaviour), styles.css (dark and light themes), favicon.svg
-├── tests/                   # pytest: test_app.py, test_watchdog.py, test_features.py, test_console.py
+├── tests/                   # pytest: test_app.py, test_watchdog.py, test_features.py, test_console.py,
+│                            #   test_alerts.py, test_correlation.py, test_metrics.py, test_monitoring_files.py
 ├── docs/
 │   ├── process-flows.md     # Every user and system flow, with diagrams
+│   ├── roadmap.md           # What was built next, and what was dropped and why
+│   ├── walkthroughs/        # How Prometheus/Grafana, alert rules and correlation work
 │   ├── screenshots/         # README and portfolio images
 │   └── major_project_proposal.md
-├── monitoring/              # docker-compose (DeepBell, Prometheus, Grafana) and the dashboard
+├── monitoring/              # docker-compose (DeepBell, Prometheus, Grafana), the Prometheus
+│                            #   config and the provisioned Grafana dashboard
 ├── run_all.py               # Supervisor: restarts the server after a crash
 ├── Dockerfile               # Production image (single uvicorn worker, non-root)
 ├── render.yaml              # Render Blueprint for the public demo
@@ -235,7 +246,7 @@ DeepBell/
 |---|---|---|
 | GET | `/` | Dashboard |
 | GET | `/healthz` | Liveness check |
-| GET | `/api/status` | Health, open incidents, last sample and its time, baseline, detector streaks, database state, fault cooldowns, guided-demo progress, the live pipeline (`pipeline`), the newest snapshot and whether it holds the current data, and uptime. `?events_after=N` also returns server events newer than N. |
+| GET | `/api/status` | Health, open incidents, alert counts, last sample and its time, baseline, detector streaks, database state, fault cooldowns, guided-demo progress, the live pipeline (`pipeline`), the newest snapshot and whether it holds the current data, and uptime. `?events_after=N` also returns server events newer than N. |
 | GET | `/api/status/history?minutes=&bars=` | Status-strip bars (default 30 minutes in 60 bars) and the share of healthy live samples |
 | GET | `/api/alerts` | Alert rules with their state (`ok`, `pending`, `firing`, `resolved`), the newest state changes, problems found in the rules file and whether a webhook is configured |
 | GET | `/metrics` | Prometheus metrics (text format) |
@@ -272,8 +283,9 @@ All timestamps in API responses are ISO-8601 in UTC; the UI shows them in the vi
 - Snapshots are not point-in-time recovery: you can restore one of the last 10 distinct snapshots, taken at most every 30 s, and a rollback loses whatever changed since.
 - At runtime the rollback is manual (or part of the guided demo); it is automatic only in the startup check.
 - There is no authentication. Public demo mode disables the dangerous endpoints and caps the rest, but any visitor can inject the capped faults and roll back the shared database. Cooldowns are global and kept in memory.
-- Open incidents, cooldowns, the guided demo and leaked memory live in one process, so the app must run as a single worker. If the server restarts while an incident is open, that incident is marked interrupted.
+- Open incidents, cooldowns, the guided demo, leaked memory and the alert states live in one process, so the app must run as a single worker. If the server restarts while an incident is open, that incident is marked interrupted.
 - Times to detect and recover are measured on injected faults in this lab and say nothing about a production system.
+- The likely cause is a heuristic: it only knows about injected faults, CPU, memory and alerts, and it can say "unknown". Alert rules are read at startup (edit the file and restart), and a failed webhook post is logged, not retried.
 
 ## Author
 

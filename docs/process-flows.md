@@ -133,7 +133,7 @@ flowchart LR
 3. While memory is held the incident stays open and the pipeline's Recover step is amber and marked "act now": "Release the 60 MB of leaked memory to recover."
 4. At the cap the button reads "Limit reached" with "release memory first", whatever the cooldown, because waiting would not help (`renderFaults`).
 5. "Release memory" calls `POST /fault/memory_release` (`chaos.release_leak`), which frees every block and records the action on the open incident's timeline. Three normal samples later the incident resolves. If nothing was held, the toast says so.
-5. A leak nobody releases is freed after 5 minutes by `chaos.release_stale_leak()` on the watchdog tick, so a closed tab cannot hold the shared demo in an incident.
+6. A leak nobody releases is freed after 5 minutes by `chaos.release_stale_leak()` on the watchdog tick, so a closed tab cannot hold the shared demo in an incident.
 
 ### U5. Chaos Lab: database corruption and rollback
 
@@ -185,7 +185,7 @@ flowchart TD
 
 1. `loadIncidents()` reads `GET /api/incidents?limit=50` and `GET /api/incidents/stats`; `renderIncidentList()` shows each incident with its kind icon, times and status, and the counts on the filter buttons. Clicks are handled once on the list (event delegation), and the list is re-rendered only when its content changes, keeping keyboard focus on the same row.
 2. A deep link `#incidents/<id>` (from the banner, the strip, the demo summary, the key-number bars or recent incidents) selects that incident; a missing id gets a toast. Choosing an incident announces "Showing incident #N" to screen readers.
-3. `renderDetail()` shows started, detected and resolved times, time to detect and time to recover, a lifecycle bar drawn to scale in real seconds (`renderLifecycle`; a zero-length segment still shows as a 4 px tick, and an open incident's bar grows on every poll) and the timeline (fault, flagged, detected, report, action, resolved or interrupted).
+3. `renderDetail()` shows started, detected and resolved times, time to detect and time to recover, a lifecycle bar drawn to scale in real seconds (`renderLifecycle`; a zero-length segment still shows as a 4 px tick, and an open incident's bar grows on every poll) the "Likely cause" panel (`GET /api/incidents/{id}`: the trigger, the evidence, what was checked and not found, and a confidence level; see the [walkthrough](walkthroughs/03-incident-correlation.md)) and the merged timeline (fault, flagged, alert, detected, report, action, restore, resolved or interrupted).
 4. `showReport()` loads `GET /api/reports/{name}`; `renderReport()` renders it with `marked` (raw HTML escaped, links limited to http(s) and mailto, images reduced to their alt text) and a badge for its source: Gemini via LangChain, built-in template, template fallback, or example.
 5. "Download .md" calls `GET /api/reports/{name}/download` (`reports.report_for_download`), which appends the incident's timeline, its time to detect and its time to recover.
 6. "Write a report now" is on the Incidents toolbar and on the Overview's report panel; both share the 30 s cooldown and the "Writing…" state.
@@ -203,7 +203,7 @@ Error paths: invalid report names return 400 and unknown ones 404 ("Only the new
 
 1. Two charts (CPU, memory) on a time axis with the learned baseline, the alert line, flagged samples in red, shaded incident spans and blank spans where no sample was taken (a restart, or a sampler starved by the CPU spike). The 2 min / 10 min toggle sets the window and requests `GET /api/metrics?limit=70|310` (the endpoint returns at most 400). Hovering a point shows its time, value, the alert line and the watchdog's label.
 2. The Detector card shows the baseline source, 95th-percentile CPU, median memory, the current streaks and how many times the Isolation Forest ran.
-3. "What the runtime.detector sees" plots every sample as CPU against memory, with both alert lines and the candidate region shaded, so the two-gate rule is visible.
+3. "What the detector sees" plots every sample as CPU against memory, with both alert lines and the candidate region shaded, so the two-gate rule is visible.
 4. The samples table (newest first) shows each sample's memory distance from the baseline ("Memory vs baseline") and the watchdog's label.
 
 ### U10. Settings: Gemini key (local runs only)
@@ -213,7 +213,7 @@ Error paths: invalid report names return 400 and unknown ones 404 ("Only the new
 
 ### U11. Navigation, theme and accessibility
 
-- Views are hash routes (`#overview`, `#incidents/<id>`, `#telemetry`, `#chaos`, `#timemachine`, `#about`, `#settings`); `showView()` updates the title, the eyebrow, `aria-current` and moves focus to the heading on navigation. Under 900 px the sidebar becomes a sticky bar with scrolling tabs.
+- Views are hash routes (`#overview`, `#incidents/<id>`, `#alerts`, `#telemetry`, `#chaos`, `#timemachine`, `#about`, `#settings`); `showView()` updates the title, the eyebrow, `aria-current` and moves focus to the heading on navigation. Under 900 px the sidebar becomes a sticky bar with scrolling tabs.
 - The theme toggle switches between the dark default and a light theme, stored in `localStorage` and applied before the first paint; charts re-read their colours (`restyleCharts`).
 - A skip link, labelled controls, visible focus rings, keyboard access to the status strip (arrow keys, Home, End; Enter on a bar with an incident is a click), and no motion under `prefers-reduced-motion`.
 - Keyboard focus survives polling: lists and summaries that refresh (`#demo-foot`, `#banner-detail`, the incident list, recent incidents, the report list, the snapshot and transaction tables, the samples table) go through `setHTML()`, which replaces markup only when it changed and re-focuses the element with the same `data-focus` key when it did.
@@ -244,7 +244,7 @@ flowchart LR
 
 ```mermaid
 flowchart TD
-    A[main.lifespan: startup.startup_event] --> B[Reset the uptime clock]
+    A[main.lifespan: startup.startup_event] --> B[Reset the uptime clock, alerts.load_rules]
     B --> C{"snapshots.verify_and_heal_database: app.db readable?"}
     C -- yes --> D[db.init_db, db.init_metrics_db]
     C -- no --> E{Readable snapshot?}
@@ -285,14 +285,14 @@ flowchart TD
     T --> P["telemetry.prune_metrics every 150 ticks (keep 10,000)"]
 ```
 
-Files and functions: `detection.Detector` (`fit_due`, `fit`, `classify`, `isolated`, `observe`), `telemetry.record_sample`, `telemetry.sample_status`, `workers.watchdog_worker`. While an incident is open its samples never enter the baseline, so a held leak cannot become the new normal. Errors inside a tick are logged and the loop continues.
+Files and functions: `detection.Detector` (`fit_due`, `fit`, `classify`, `isolated`, `observe`), `telemetry.record_sample`, `telemetry.sample_status`, `workers.watchdog_worker`. While an incident is open its samples never enter the baseline, so a held leak cannot become the new normal. After the sample is stored and any incident opened, `telemetry.record_sample` also calls `alerts.evaluate_sample` (alert rules, see the [walkthrough](walkthroughs/02-alert-rules.md)) and only then closes incidents. Errors inside a tick are logged and the loop continues.
 
 ### S3. Incident lifecycle and timeline
 
 ```mermaid
 stateDiagram-v2
     [*] --> Open: incidents.open_incident (2 anomalous samples, or a failed database check)
-    Open --> Open: incidents.note_fault / report linked / incidents.note_action
+    Open --> Open: incidents.note_fault / report linked / incidents.note_action / incidents.note_alert
     Open --> Resolved: incidents.close_incident (3 normal samples, or the database check passes)
     Open --> Interrupted: server restarted (incident_store.interrupt_open_incidents)
     Resolved --> [*]
@@ -314,7 +314,7 @@ flowchart TD
     C --> D{GOOGLE_API_KEY set?}
     D -- yes --> E[llm.generate_ai_report: LangChain PromptTemplate and ChatGoogleGenerativeAI]
     E -- error --> F[Template with a note: 'this is the template fallback']
-    D -- no --> G["reports.build_template_report: summary, timeline, statistics, telemetry table, likely cause, actions"]
+    D -- no --> G["reports.build_template_report: summary, timeline, statistics, telemetry table, correlation analysis, likely cause, actions"]
     E -- ok --> W
     F --> W
     G --> W["reports.write_report: reports/RCA_Report_<UTC>.md, keep newest 20"]
@@ -380,7 +380,7 @@ The pipeline follows the open incident (`overview.pipeline_focus`), or one resol
 
 ### S9. Status polling, events, status strip and KPIs
 
-- `routes.status.get_system_status()` returns health, open incidents, the last sample and when it was taken, the baseline, runtime.detector streaks, the database state, fault cooldowns, the demo, the pipeline, the newest snapshot (and whether it is current), uptime and, with `events_after`, the events newer than that cursor (`eventlog.recent_events`, newest 100 kept in memory).
+- `routes.status.get_system_status()` returns health, open incidents, the last sample and when it was taken, the baseline, the detector streaks, alert counts, the database state, fault cooldowns, the demo, the pipeline, the newest snapshot (and whether it is current), uptime and, with `events_after`, the events newer than that cursor (`eventlog.recent_events`, newest 100 kept in memory).
 - The page polls it one request at a time (`pollStatus`), so an action's refresh and the scheduled poll never render the same events twice; a new `last_sample_at` triggers `GET /api/metrics` (at most `config.METRICS_PAGE_MAX` = 400 samples per call).
 - `overview.status_history()` (`GET /api/status/history`, minutes clamped to 5 to 120 and bars to 10 to 120) buckets the metrics into bars: incident, degraded (flagged, no incident), healthy, synthetic or no data, plus the share of healthy live samples.
 - `overview.incident_stats()` (`GET /api/incidents/stats`) returns total and open counts, the median time to detect and to recover over the newest 20 incidents, and each one's times for the small bar charts.
