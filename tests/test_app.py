@@ -96,11 +96,17 @@ def test_report_without_key_never_calls_llm(client, monkeypatch):
 def test_report_with_key_uses_llm(client, monkeypatch):
     monkeypatch.setenv("GOOGLE_API_KEY", "test-key")
     monkeypatch.setattr(
-        llm, "generate_ai_report", lambda key, rows, incident="": f"# AI report ({key})"
+        llm,
+        "generate_ai_report",
+        lambda key, rows, incident="", context="": f"# AI report ({key})",
     )
     path = rca.generate_rca_report_task()
     with open(path, encoding="utf-8") as f:
-        assert f.read() == "# AI report (test-key)"
+        text = f.read()
+    assert "# AI report (test-key)" in text
+    assert "**Generator:** Gemini (AI-written)" in text
+    assert reports.report_source(text) == "gemini"
+    assert reports.report_title(text, "x") == "AI report (test-key)"
 
 
 def test_report_falls_back_when_llm_fails(client, monkeypatch):
@@ -416,3 +422,15 @@ def test_timestamps_are_normalised_to_utc():
     assert timeutil.to_iso_utc("2026-01-01T15:30:00+05:30") == "2026-01-01T10:00:00Z"
     assert timeutil.to_iso_utc("not a time") == "not a time"
     assert timeutil.to_iso_utc(None) is None
+
+
+def test_ai_report_is_given_and_shown_the_evidence():
+    timeline = [{"at": "10:00:00", "text": "Fault injected: memory leak"}]
+    context = reports.incident_context("Leak held at 120 MB", timeline, None)
+    assert "## Detail" in context and "| 10:00:00 | Fault injected: memory leak |" in context
+    text = reports.label_ai_report("# AI report\n\nThe leak caused it.", context)
+    assert text.startswith("> **Generator:** Gemini (AI-written)")
+    assert "# Evidence given to the AI" in text and "Leak held at 120 MB" in text
+    assert reports.report_title(text, "x") == "AI report"
+    assert reports.report_source(text) == "gemini"
+    assert reports.incident_context() == ""
