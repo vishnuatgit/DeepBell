@@ -34,7 +34,9 @@ def load_llm(relearn: bool) -> None:
         )
 
 
-def generate_ai_report(api_key: str, rows: list[dict], incident: str = "") -> str:
+def generate_ai_report(
+    api_key: str, rows: list[dict], incident: str = "", context: str = ""
+) -> str:
     """Ask Gemini (through LangChain) for an RCA report. Imported lazily."""
     from langchain_core.prompts import PromptTemplate
     from langchain_google_genai import ChatGoogleGenerativeAI
@@ -52,17 +54,29 @@ Incident type reported by the watchdog: {incident}
 Here is the telemetry data (timestamps in UTC) from the last few minutes before the incident:
 {telemetry_data}
 
+What DeepBell recorded about this incident (its detail, timeline and the likely cause from
+its correlation rules):
+{context}
+
+Use only the data above. Do not invent events, numbers or causes. If the data does not
+support a cause, say so. If you disagree with the likely cause above, explain why from the data.
+
 Write a Root Cause Analysis (RCA) report in Markdown with:
 1. Executive Summary
 2. Timeline of Anomaly (when values started deviating)
 3. Suspected Root Cause (CPU lockup, memory leak or database corruption, based on the data)
 4. Recommended Preventative Actions
+5. Confidence (high, medium or low) in one line, naming the evidence it rests on
 """
     prompt = PromptTemplate(
-        input_variables=["telemetry_data", "incident"], template=prompt_template
+        input_variables=["telemetry_data", "incident", "context"], template=prompt_template
     )
     response = (prompt | llm).invoke(
-        {"telemetry_data": reports.telemetry_table(rows), "incident": incident or "manual request"}
+        {
+            "telemetry_data": reports.telemetry_table(rows),
+            "incident": incident or "manual request",
+            "context": context or "Nothing recorded beyond the telemetry.",
+        }
     )
     content = response.content
     if isinstance(content, list):

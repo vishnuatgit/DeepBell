@@ -222,6 +222,37 @@ def read_report(name: str) -> dict | None:
     }
 
 
+def incident_context(
+    detail: str = "", timeline: list[dict] | None = None, likely: dict | None = None
+) -> str:
+    """What DeepBell recorded about an incident, as Markdown: the evidence the AI report is
+    given, and shown with, so its claims can be checked."""
+    parts = []
+    if detail:
+        parts += ["## Detail", "", detail, ""]
+    if timeline:
+        parts += ["## Timeline (UTC)", "", "| Time | Event |", "|---|---|"]
+        parts += [f"| {e['at']} | {e['text']} |" for e in timeline]
+        parts += [""]
+    if likely:
+        parts += [correlation.markdown_section(likely)]
+    return "\n".join(parts).strip()
+
+
+def label_ai_report(content: str, context: str) -> str:
+    """Mark a Gemini report as AI-written and attach the evidence it was given."""
+    parts = [
+        "> **Generator:** Gemini (AI-written). Check its claims against the evidence it was "
+        "given, listed at the end.",
+        "",
+        content.strip(),
+        "",
+    ]
+    if context:
+        parts += ["---", "", "# Evidence given to the AI", "", context, ""]
+    return "\n".join(parts)
+
+
 def report_title(content: str, fallback: str) -> str:
     match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
     return (match.group(1) if match else fallback).replace("Incident Report: ", "").strip()

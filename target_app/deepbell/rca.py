@@ -55,9 +55,14 @@ def generate_rca_report_task(incident: str = "", record: dict | None = None) -> 
             api_key = llm.get_api_key()
             content = None
             note = ""
+            timeline = stored["timeline"] if stored else None
+            likely = correlation.analyse(stored) if stored else None
             if api_key:
                 try:
-                    content = llm.generate_ai_report(api_key, rows, label)
+                    context = reports.incident_context(detail, timeline, likely)
+                    content = llm.generate_ai_report(api_key, rows, label, context)
+                    if content:
+                        content = reports.label_ai_report(content, context)
                 except Exception as e:
                     config.logger.error(f"AI report failed, using template instead: {e}")
                     note = (
@@ -65,8 +70,6 @@ def generate_rca_report_task(incident: str = "", record: dict | None = None) -> 
                     )
             source = "Gemini" if content else "template"
             if not content:
-                timeline = stored["timeline"] if stored else None
-                likely = correlation.analyse(stored) if stored else None
                 content = reports.build_template_report(
                     rows, generated_at, note, label, detail, timeline, likely
                 )
