@@ -2115,8 +2115,18 @@ function initMarkdown() {
     });
 }
 
+// On narrow screens the nav scrolls sideways; a CSS fade on its right edge shows while more items remain.
+function initNavHint() {
+    const nav = $('nav');
+    const update = () => nav.toggleAttribute('data-more', nav.scrollWidth - nav.clientWidth - nav.scrollLeft > 4);
+    nav.addEventListener('scroll', update, { passive: true });
+    window.addEventListener('resize', update);
+    update();
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     initMarkdown();
+    initNavHint();
     initCharts();
     initStrip();
     applyTheme(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark');
