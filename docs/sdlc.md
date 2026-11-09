@@ -38,7 +38,7 @@ Every user and system flow, with the functions involved, is in [process-flows.md
 
 ## 3. Implementation
 
-- **Stack:** Python 3.11 and 3.12. Runtime pins in [requirements.txt](../target_app/requirements.txt): fastapi 0.104.1, uvicorn 0.24.0.post1, jinja2 3.1.2, psutil 5.9.6, numpy 1.26.4, scikit-learn 1.3.2, langchain-core 0.1.16, langchain-google-genai 0.0.6, prometheus-client 0.26.0.
+- **Stack:** Python 3.11 and 3.12. Runtime pins in [requirements.txt](../target_app/requirements.txt): fastapi 0.162.2, uvicorn 0.54.0, jinja2 3.1.6, psutil 7.2.2, numpy 2.4.6, scikit-learn 1.9.1, langchain-core 1.7.6, langchain-google-genai 4.4.3, python-dotenv 1.2.4, python-multipart 0.0.33, prometheus-client 0.26.0. On 2026-11-09 these had 0 known advisories on OSV.dev.
 - **Dev tools:** [requirements-dev.txt](../requirements-dev.txt) pins pytest 9.1.1, pytest-cov 7.1.0, httpx 0.27.2, ruff 0.6.9 and pyyaml 6.0.3.
 - **Layout:** `target_app/` holds the app, `tests/` the tests, `monitoring/` the Prometheus and Grafana stack, `docs/` the documents. `run_all.py` is the local entry point. `reports/` holds generated sample incident reports.
 - **Standards:** ruff checks and formats, configured in [pyproject.toml](../pyproject.toml) (line length 100, rules E, F, W, I, B, UP). CI enforces both.
@@ -95,5 +95,5 @@ flowchart LR
 - **Single author, so no peer review.** Pull requests are self-merged. Next step: ask a reviewer to approve changes, or enable branch protection.
 - **Some work went directly to `main`.** Next step: require pull requests on `main`.
 - **No coverage threshold.** Next step: set `--cov-fail-under` in CI.
-- **Old runtime pins.** FastAPI 0.104.1 and langchain-core 0.1.16 are old. Next step: add Dependabot and upgrade deliberately.
+- **Pins age.** The runtime pins were upgraded on 2026-11-09 (0 OSV advisories) but are exact, so they will age again. Next step: add Dependabot.
 - **Monitoring stack is local only.** Next step: say so in the README, or host it.

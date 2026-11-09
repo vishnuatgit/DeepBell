@@ -1016,6 +1016,7 @@ function renderCause(cause) {
     setHTML($('cause-body'), `
         <p class="cause-summary">${esc(cause.summary)}</p>
         <p class="cause-note">${esc(cause.confidence_reason)}</p>
+        ${cause.confidence === 'low' ? '<p class="cause-note">Low confidence means no fault was recorded for this incident, so the telemetry shows what moved and when, but not why.</p>' : ''}
         ${cause.evidence.length ? `<h4 class="cause-label">Evidence</h4>${list(cause.evidence)}` : ''}
         ${cause.not_found.length ? `<h4 class="cause-label">Checked, not found</h4>${list(cause.not_found)}` : ''}
         <p class="cause-note cause-disclaimer">${esc(cause.disclaimer)}</p>`);

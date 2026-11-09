@@ -30,9 +30,9 @@ STATIC_VERSION = static_version()
 async def read_dashboard(request: Request):
     """Serve the dashboard."""
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
-            "request": request,
             "report": reports.latest_report(),
             "api_key_configured": bool(llm.get_api_key()),
             "public_demo": config.PUBLIC_DEMO,
