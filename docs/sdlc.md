@@ -1,6 +1,6 @@
 # Software development lifecycle: DeepBell
 
-DeepBell is a small SRE lab in FastAPI. It samples its own CPU and memory, flags anomalies, writes incident reports and restores SQLite snapshots ([README](../README.md)). It was built by one author, Chandana Vishnu Jayanth, in short iterations. Early work went straight to `main`. From 2026-10-23 onward, changes went through small branches merged to `main` by pull request. The first commit is dated 2026-06-04 and the latest 2026-11-07. `git rev-list --count HEAD` gives 45 commits. There are 10 merge commits (pull requests #3 to #12). Pull request #1 appears in a commit title as a squash merge.
+DeepBell is a small SRE lab in FastAPI. It samples its own CPU and memory, flags anomalies, writes incident reports and restores SQLite snapshots ([README](../README.md)). It was built by one author, Chandana Vishnu Jayanth, in short iterations. Early work went straight to `main`. From 2026-10-23 onward, changes went through small branches merged to `main` by pull request. The first commit is dated 2026-06-04 and the latest 2026-11-09. `git rev-list --count HEAD` gives 47 commits. There are 11 merge commits (pull requests #3 to #13). Pull request #1 appears in a commit title as a squash merge.
 
 ## 1. Planning and requirements
 
@@ -42,7 +42,7 @@ Every user and system flow, with the functions involved, is in [process-flows.md
 - **Dev tools:** [requirements-dev.txt](../requirements-dev.txt) pins pytest 9.1.1, pytest-cov 7.1.0, httpx 0.27.2, ruff 0.6.9 and pyyaml 6.0.3.
 - **Layout:** `target_app/` holds the app, `tests/` the tests, `monitoring/` the Prometheus and Grafana stack, `docs/` the documents. `run_all.py` is the local entry point. `reports/` holds generated sample incident reports.
 - **Standards:** ruff checks and formats, configured in [pyproject.toml](../pyproject.toml) (line length 100, rules E, F, W, I, B, UP). CI enforces both.
-- **Workflow:** the history has 18 commits before pull request #1, made directly on `main`. The module split of a 2,700-line `main.py` was done on 2026-11-01. Merged branch names from the merge messages: add-mit-license, readme-license, readme-case-study, fix/functionality, feat/prometheus-grafana, feat/alert-rules, feat/incident-correlation, test-temp-cleanup, proofread, upgrade-pytest. Some commits after #1 and before #3 (2026-10-31, 2026-11-01) were also made directly on `main`.
+- **Workflow:** the history has 18 commits before pull request #1, made directly on `main`. The module split of a 2,700-line `main.py` was done on 2026-11-01. Merged branch names from the merge messages: add-mit-license, readme-license, readme-case-study, fix/functionality, feat/prometheus-grafana, feat/alert-rules, feat/incident-correlation, test-temp-cleanup, proofread, upgrade-pytest, ground-ai-report. Some commits after #1 and before #3 (2026-10-31, 2026-11-01) were also made directly on `main`.
 
 ## 4. Testing
 
