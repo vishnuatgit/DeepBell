@@ -108,15 +108,15 @@
 
     --ok-text: #047857;
     --ok-soft: rgba(16, 185, 129, 0.11);
-    --warn-text: #b45309;
+    --warn-text: #9a4a08;
     --warn-soft: rgba(245, 158, 11, 0.13);
     --bad-text: #b91c1c;
     --bad-soft: rgba(239, 68, 68, 0.09);
     --info-text: #0369a1;
     --info-soft: rgba(56, 189, 248, 0.12);
-    --orange: #c2410c;
+    --orange: #b53a0b;
     --orange-soft: rgba(234, 88, 12, 0.09);
-    --yellow: #a16207;
+    --yellow: #8c5606;
     --yellow-soft: rgba(202, 138, 4, 0.1);
     --violet: #7e22ce;
     --violet-soft: rgba(147, 51, 234, 0.09);
@@ -2521,6 +2521,8 @@ input {
     border-color: var(--accent-line);
 }
 
+.log:focus-visible,
+.table-wrap:focus-visible,
 .incident-row:focus-visible {
     outline: none;
     box-shadow: var(--ring);
@@ -2958,7 +2960,7 @@ abbr[title] {
 }
 
 .chaos-card.is-disabled {
-    opacity: 0.66;
+    opacity: 0.88;
 }
 
 .chaos-card.is-disabled:hover {

@@ -145,7 +145,7 @@
         </header>
 
         <!-- Overview -->
-        <section class="view" id="view-overview" aria-labelledby="view-title">
+        <section class="view" id="view-overview" aria-labelledby="view-title"><span id="overview"></span>
             <div class="status-banner" id="status-banner" data-tone="neutral">
                 <span class="banner-icon" aria-hidden="true"><span class="pulse-dot"></span></span>
                 <div class="banner-copy">
@@ -244,19 +244,19 @@
                     <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-incident"/></svg>Open incidents</span>
                     <span class="kpi-value" id="kpi-open">--</span>
                     <span class="kpi-note" id="kpi-open-note">--</span>
-                    <svg class="kpi-bars" id="kpi-open-bars" viewBox="0 0 120 28" role="img" aria-label="Loading incidents"></svg>
+                    <svg class="kpi-bars" id="kpi-open-bars" viewBox="0 0 120 28" role="group" aria-label="Loading incidents"></svg>
                 </div>
                 <div class="kpi">
                     <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-target"/></svg>Time to detect</span>
                     <span class="kpi-value" id="kpi-ttd">--</span>
                     <span class="kpi-note" id="kpi-ttd-note">median, fault to incident</span>
-                    <svg class="kpi-bars" id="kpi-ttd-bars" viewBox="0 0 120 28" role="img" aria-label="Loading incidents"></svg>
+                    <svg class="kpi-bars" id="kpi-ttd-bars" viewBox="0 0 120 28" role="group" aria-label="Loading incidents"></svg>
                 </div>
                 <div class="kpi">
                     <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-restore"/></svg>Time to recover</span>
                     <span class="kpi-value" id="kpi-ttr">--</span>
                     <span class="kpi-note" id="kpi-ttr-note">median, incident to resolved</span>
-                    <svg class="kpi-bars" id="kpi-ttr-bars" viewBox="0 0 120 28" role="img" aria-label="Loading incidents"></svg>
+                    <svg class="kpi-bars" id="kpi-ttr-bars" viewBox="0 0 120 28" role="group" aria-label="Loading incidents"></svg>
                 </div>
             </div>
 
@@ -357,13 +357,13 @@
                 </div>
                 <div class="terminal">
                     <div class="terminal-head"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><span>server_events</span><span class="terminal-meta">{% if public_demo %}shared by every visitor{% else %}this run{% endif %}</span></div>
-                    <ol class="log" id="log-overview" aria-label="Server events, newest first"><li class="log-empty">Waiting for events…</li></ol>
+                    <ol class="log" id="log-overview" tabindex="0" aria-label="Server events, newest first"><li class="log-empty">Waiting for events…</li></ol>
                 </div>
             </section>
         </section>
 
         <!-- Incidents -->
-        <section class="view" id="view-incidents" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-incidents" aria-labelledby="view-title" hidden><span id="incidents"></span>
             <div class="view-intro">
                 <p class="view-lead">Every incident this server has opened, newest first. <strong>Time to detect</strong> runs from the fault (or the first anomalous sample) to the incident opening; <strong>time to recover</strong> from opening to resolution. Both are demo measurements from this server's own clock.</p>
                 <div class="toolbar">
@@ -437,7 +437,7 @@
         </section>
 
         <!-- Alerts -->
-        <section class="view" id="view-alerts" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-alerts" aria-labelledby="view-title" hidden><span id="alerts"></span>
             <p class="view-lead">Alert rules watch one metric each. A rule is <strong>pending</strong> while its condition is true but has not lasted long enough, <strong>firing</strong> once it has lasted its full duration, and <strong>resolved</strong> when the condition clears. The rules are read at startup from <code>target_app/alert_rules.json</code>: edit that file and restart to change them.</p>
             <div class="grid">
                 <section class="panel col-7" aria-labelledby="rules-title">
@@ -462,7 +462,7 @@
         </section>
 
         <!-- Live Telemetry -->
-        <section class="view" id="view-telemetry" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-telemetry" aria-labelledby="view-title" hidden><span id="telemetry"></span>
             <section class="panel" aria-labelledby="tl-title">
                 <div class="panel-header">
                     <div>
@@ -523,7 +523,7 @@
                     <h2 id="samples-title">Latest samples</h2>
                     <span class="live-tag"><span class="live-dot" aria-hidden="true"></span><span class="live-text">newest first</span></span>
                 </div>
-                <div class="table-wrap">
+                <div class="table-wrap" tabindex="0" role="region" aria-label="Recent samples">
                     <table class="table">
                         <thead><tr><th scope="col">Time</th><th scope="col" class="num">CPU %</th><th scope="col" class="num">Memory MB</th><th scope="col" class="num hide-sm">Memory vs baseline</th><th scope="col">Watchdog</th></tr></thead>
                         <tbody id="samples-body"><tr><td colspan="5" class="table-empty">Loading samples…</td></tr></tbody>
@@ -533,7 +533,7 @@
         </section>
 
         <!-- Chaos Lab -->
-        <section class="view" id="view-chaos" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-chaos" aria-labelledby="view-title" hidden><span id="chaos"></span>
             <p class="view-lead">Cause a real failure in this server and watch the pipeline react in Live results.{% if public_demo %} Faults are shared by everyone on this demo, capped, and each has a {{ config.cooldownSec }} s cooldown.{% endif %}</p>
             <div class="grid">
                 <section class="panel faults-panel col-7" aria-labelledby="faults-title">
@@ -636,7 +636,7 @@
                     </div>
                     <div class="terminal">
                         <div class="terminal-head"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg><span>server_events</span><span class="terminal-meta">{% if public_demo %}shared{% else %}this run{% endif %}</span></div>
-                        <ol class="log log-short" id="log-chaos" aria-label="Server events, newest first"><li class="log-empty">Waiting for events…</li></ol>
+                        <ol class="log log-short" id="log-chaos" tabindex="0" aria-label="Server events, newest first"><li class="log-empty">Waiting for events…</li></ol>
                     </div>
                     <div class="report-teaser">
                         <div>
@@ -650,7 +650,7 @@
         </section>
 
         <!-- Time Machine -->
-        <section class="view" id="view-timemachine" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-timemachine" aria-labelledby="view-title" hidden><span id="timemachine"></span>
             <p class="view-lead">The app's own SQLite database holds sample transactions. Every {{ config.snapshotIntervalSec }} s it is copied to a snapshot if its contents changed, and the newest {{ config.snapshotsKeep }} are kept. Corrupt it in the Chaos Lab, then roll back here.</p>
             <div class="db-alert db-alert-lg" data-db-alert hidden>
                 <svg class="icon" aria-hidden="true"><use href="#i-database"/></svg>
@@ -666,7 +666,7 @@
                         </div>
                     </div>
                     <div class="snap-track" id="snap-track" aria-hidden="true"></div>
-                    <div class="table-wrap">
+                    <div class="table-wrap" tabindex="0" role="region" aria-label="Snapshots">
                         <table class="table">
                             <thead><tr><th scope="col">Taken</th><th scope="col" class="num"><abbr title="Transactions in the snapshot">Rows</abbr></th><th scope="col" class="num hide-sm">Size</th><th scope="col" class="num"><span class="sr-only">Action</span></th></tr></thead>
                             <tbody id="snap-body"><tr><td colspan="4" class="table-empty">Loading snapshots…</td></tr></tbody>
@@ -693,7 +693,7 @@
                         </div>
                         <p class="field-error" id="tx-error" aria-live="polite"></p>
                     </form>
-                    <div class="table-wrap">
+                    <div class="table-wrap" tabindex="0" role="region" aria-label="Recent transactions">
                         <table class="table">
                             <thead><tr><th scope="col">Time</th><th scope="col" class="num">Amount</th><th scope="col" class="hide-sm">ID</th></tr></thead>
                             <tbody id="tx-body"><tr><td colspan="3" class="table-empty">Loading transactions…</td></tr></tbody>
@@ -705,7 +705,7 @@
         </section>
 
         <!-- About -->
-        <section class="view" id="view-about" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-about" aria-labelledby="view-title" hidden><span id="about"></span>
             <div class="grid">
                 <section class="panel prose col-8" aria-labelledby="why-title">
                     <h2 id="why-title">Why it exists</h2>
@@ -785,7 +785,7 @@
 
         {% if not public_demo %}
         <!-- Settings (local runs only) -->
-        <section class="view" id="view-settings" aria-labelledby="view-title" hidden>
+        <section class="view" id="view-settings" aria-labelledby="view-title" hidden><span id="settings"></span>
             <section class="panel narrow" aria-labelledby="key-title">
                 <div class="panel-header">
                     <div>
