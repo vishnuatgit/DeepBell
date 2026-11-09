@@ -1,6 +1,6 @@
 # DeepBell
 
-**Catches what breaks in a running app, finds the likely cause and writes the incident report.** A mini SRE lab in FastAPI: it detects its own CPU and memory anomalies, writes incident reports, and restores from snapshots.
+**Catches what breaks in a running app, finds the likely cause and writes the incident report.** A mini SRE lab in FastAPI: it detects its own CPU and memory anomalies, explains each incident and restores from snapshots.
 
 Monitoring usually stops at an alert. DeepBell practises the steps after it: **detect → report → recover**. A background thread samples the service's own CPU and memory every 2 s, a baseline check plus an Isolation Forest flags anomalies and opens de-duplicated incidents, each incident gets a Markdown report (Google Gemini through LangChain when a key is set, a built-in template otherwise), and rolling SQLite snapshots give one-click rollback. A capped Chaos Lab lets you break it on purpose.
 

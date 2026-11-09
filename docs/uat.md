@@ -4,7 +4,7 @@
 
 Test with 3 to 5 people who have never seen DeepBell. Mix them:
 
-- 2 students or junior developers (your likely recruiters' peers).
+- 2 students or junior developers (typical reviewers of a portfolio).
 - 1 person who has heard of monitoring or on-call work.
 - 1 non-technical person, if you can.
 
