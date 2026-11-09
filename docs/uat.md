@@ -90,6 +90,6 @@ Fixed the same day: a shared event log and the data tables are now keyboard-focu
 
 ### Bugs found
 
-None blocking. Observations: the phone tab bar clips "Live Telemetry" (scrolls sideways); the detail of CPU spike #4 reads "No injected fault on record" even though the demo started it, so the cause is shown as "Heuristic, low confidence"; CPU spike #1 and Memory leak #2 opened at the same second (15:39:29), which may read as a duplicate.
+None blocking. Observations: the phone tab bar clips "Live Telemetry" (scrolls sideways); the detail of CPU spike #4 reads "No injected fault on record" and shows the cause as "Heuristic, low confidence". That is correct: the guided demo injects only a memory leak and database corruption, never a CPU spike, so this spike was a natural one; CPU spike #1 and Memory leak #2 opened at the same second (15:39:29), which may read as a duplicate.
 
 Dependency check the same day: target_app/requirements.txt had 48 known advisories on OSV.dev; upgraded to fastapi 0.162.2, uvicorn 0.54.0, jinja2 3.1.6, psutil 7.2.2, numpy 2.4.6, scikit-learn 1.9.1, langchain-core 1.7.6, langchain-google-genai 4.4.3, python-dotenv 1.2.4, python-multipart 0.0.33; now 0.
