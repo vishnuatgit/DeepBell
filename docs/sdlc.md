@@ -89,7 +89,7 @@ flowchart LR
 
 ## 7. Gaps and next steps
 
-- **No UAT.** Nobody outside the author is recorded as having tested it. Next step: run the task list in [uat.md](uat.md) with three to five people and record the results there.
+- **No UAT.** Nobody outside the author is recorded as having tested it. Next step: test the main tasks with three to five people and note where they get stuck.
 - **No browser-driven tests.** Front-end code is untested. Next step: add a Playwright smoke test of the guided demo.
 - **No staging environment.** Merges to `main` deploy straight to the demo. Next step: add a second Render service from a branch.
 - **Single author, so no peer review.** Pull requests are self-merged. Next step: ask a reviewer to approve changes, or enable branch protection.

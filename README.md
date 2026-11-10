@@ -225,7 +225,6 @@ DeepBell/
 │   ├── process-flows.md     # Every user and system flow, with diagrams
 │   ├── roadmap.md           # What was built next, and what was dropped and why
 │   ├── sdlc.md              # How it was planned, designed, built, tested and shipped
-│   ├── uat.md               # User acceptance test: tasks, pass criteria, results
 │   ├── walkthroughs/        # How Prometheus/Grafana, alert rules and correlation work
 │   ├── screenshots/         # README and portfolio images
 │   └── major_project_proposal.md
