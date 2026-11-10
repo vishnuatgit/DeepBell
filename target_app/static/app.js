@@ -712,7 +712,7 @@ function renderDemo(run, cooldown) {
         li.querySelector('.step-detail').textContent = step?.detail || '';
         const time = li.querySelector('.step-time');
         time.textContent = step?.done_at ? fmtTime(step.done_at) : '';
-        time.dateTime = step?.done_at || '';
+        time.dataset.doneAt = step?.done_at || '';
         li.querySelector('.step-sr').textContent = stepState === 'pending' ? '' : ` (${stepState})`;
         // Announce each finished step once, for screen readers.
         const key = run && `${run.id}:${step.key}:${stepState}`;

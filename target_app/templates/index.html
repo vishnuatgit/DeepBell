@@ -121,7 +121,7 @@
                 <span class="eyebrow" id="view-eyebrow">Self-monitoring incident response lab</span>
                 <h1 id="view-title" tabindex="-1">Overview</h1>
             </div>
-            <div class="stat-cards" aria-label="Live readings of this server process">
+            <div class="stat-cards" role="group" aria-label="Live readings of this server process">
                 <div class="stat-card">
                     <span class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-cpu"/></svg>CPU</span>
                     <div class="stat-row">
@@ -225,7 +225,7 @@
                                 <span class="step-title">{{ title }}<span class="sr-only step-sr"></span></span>
                                 <span class="step-detail"></span>
                             </span>
-                            <time class="step-time"></time>
+                            <span class="step-time"></span>
                         </li>
                         {% endfor %}
                     </ol>
@@ -233,7 +233,7 @@
                 </section>
             </div>
 
-            <div class="kpis" aria-label="Key numbers">
+            <div class="kpis" role="group" aria-label="Key numbers">
                 <div class="kpi">
                     <span class="kpi-label"><svg class="icon" aria-hidden="true"><use href="#i-server"/></svg>Uptime</span>
                     <span class="kpi-value" id="kpi-uptime">--</span>
