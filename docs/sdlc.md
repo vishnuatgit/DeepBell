@@ -46,7 +46,7 @@ Every user and system flow, with the functions involved, is in [process-flows.md
 
 ## 4. Testing
 
-`pytest --collect-only -q` (run in `.venv`) collects 143 tests. The grouping below is by test file, so each level is a judgement based on the [README](../README.md) test section and the file names.
+`pytest --collect-only -q` (run in `.venv`) collects 144 tests. The grouping below is by test file, so each level is a judgement based on the [README](../README.md) test section and the file names.
 
 | Level | What it covers | Where | Count |
 |---|---|---|---|

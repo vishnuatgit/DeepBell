@@ -80,6 +80,33 @@ The detector is deliberately conservative: a single noisy sample should never pa
 - **What it costs.** Detection needs at least two samples, so time to detect is at least one sample interval after the first anomalous sample. In six local runs of the guided demo the leak was detected 2 to 4 s after it was injected and resolved 10 to 13 s after detection (release, then three normal samples). These are demo measurements on a laptop, not production numbers.
 - **What it misses.** Leaks smaller than 30 MB, CPU bursts shorter than two samples, and anything that is not CPU or memory. Database corruption is caught by a query, not by the model.
 
+## Reliability benchmark
+
+Run on 2026-11-10. This is the larger, reproducible complement to the six local demo runs above: a deterministic simulation of the real `Detector` (real config constants, fake clock, seeded RNG, no threads or network) on synthetic sample streams. It is **not production telemetry**, and "closed" measures the detector noticing normal samples again, not a real process recovering.
+
+Command: `.venv/Scripts/python target_app/benchmark_detection.py` (flags `-m`, `-n` and `--minutes` change the sample sizes; the defaults are small so a full run takes about 70 s, because the Isolation Forest is refitted for every candidate sample).
+
+| Runs | Simulated hours | False incidents | Incidents per hour | Runs with a false incident |
+|---|---|---|---|---|
+| 20 | 3.3 | 0 | 0.000 | 0.0% |
+
+| Fault | Runs | Detected within 60 s | Detect p50 | Detect p95 | Detect max | Closed within 60 s of release | Close p50 | Close p95 |
+|---|---|---|---|---|---|---|---|---|
+| CPU Spike | 30 | 100.0% | 4 s | 4 s | 4 s | 100.0% | 6 s | 6 s |
+| Memory Leak | 30 | 100.0% | 4 s | 4 s | 4 s | 100.0% | 6 s | 6 s |
+
+Parameters:
+
+- Command: `.venv/Scripts/python target_app/benchmark_detection.py`
+- Python 3.11.9; false-positive runs M=20 (seeds 0..19), fault runs N=30 per fault (seeds 0..29)
+- Jitter streams: 10 simulated minutes at SAMPLE_INTERVAL_SEC=2 s, idle CPU 0.5-6 %, RAM 130 +/- 1.5 MB, a 25 % CPU bump every 37th sample
+- Warm-up before injection: 40 idle samples (FIRST_FIT_SAMPLES=15)
+- CPU spike: 3 samples at about 95 % (MAX_SPIKE_SEC=5); memory leak: +60 MB (MAX_LEAK_STEP_MB), released as soon as it is detected
+- Detection time: seconds from the last sample before injection to the incident opening. Close time: seconds from release (CPU: end of the spike) to the incident closing
+- Config: CPU_MIN_DELTA=15.0, RAM_MIN_DELTA_MB=30.0, OPEN_AFTER=2, CLOSE_AFTER=3, TRAIN_WINDOW=150, REFIT_INTERVAL_SEC=300
+
+Reading the numbers: the sample sizes are modest (20 jitter streams, 30 runs per fault), so "0 false incidents in 3.3 simulated hours" is evidence, not a guarantee. Detection time is the same 4 s in every run (the two samples needed to open, 2 s apart) because the synthetic faults are well above the thresholds and the detector is deterministic; faults near the 15-point CPU or 30 MB memory thresholds would be slower or missed.
+
 ## Safety in public demo mode
 
 Set `PUBLIC_DEMO=1` (the Render Blueprint does) when the app is reachable by anyone:
@@ -147,7 +174,7 @@ ruff check . && ruff format --check .
 pytest --cov=target_app
 ```
 
-143 tests. They use temporary directories, disable the background threads (or drive them with a fake clock) and replace the Gemini call with stubs, so they never touch the network. They cover the detector (jitter, spikes, held leaks, baseline refresh, warm-up), incident timelines and measured times, the live pipeline through a whole incident (and a new fault right after one resolves), the incident statistics, report sources, wording per fault kind, linking and download, the guided demo end to end (with a fast fake watchdog), the status strip, snapshots (readability, contents, freshness) and rollback, corruption detection, public demo mode, fault caps, cooldowns and auto-release, the alert rules (validation, the pending, firing and resolved states with a fake clock, webhook limits), the likely-cause rules and the merged timeline, the `/metrics` output and the monitoring files, the OpenAPI tags and the main API endpoints. CI runs them on Python 3.11 and 3.12, lints with ruff, and builds and smoke-tests the Docker image.
+144 tests. They use temporary directories, disable the background threads (or drive them with a fake clock) and replace the Gemini call with stubs, so they never touch the network. They cover the detector (jitter, spikes, held leaks, baseline refresh, warm-up), incident timelines and measured times, the live pipeline through a whole incident (and a new fault right after one resolves), the incident statistics, report sources, wording per fault kind, linking and download, the guided demo end to end (with a fast fake watchdog), the status strip, snapshots (readability, contents, freshness) and rollback, corruption detection, public demo mode, fault caps, cooldowns and auto-release, the alert rules (validation, the pending, firing and resolved states with a fake clock, webhook limits), the likely-cause rules and the merged timeline, the `/metrics` output and the monitoring files, the OpenAPI tags and the main API endpoints. CI runs them on Python 3.11 and 3.12, lints with ruff, and builds and smoke-tests the Docker image.
 
 ## Deploy on Render
 
